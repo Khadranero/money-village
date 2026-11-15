@@ -1,0 +1,1897 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head><body>
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Money Village</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout concept: a village map with three districts. Fields = money working, Waiting Bench = money held up, Home = money that came back. A summary strip sits above. */
+:root {
+  --bg: #E9F0EC;
+  --surface: #F7FAF8;
+  --fg: #14231D;
+  --muted: #53665C;
+  --line: #C6D4CC;
+  --accent: #1F5C45;
+  --on-accent: #FFFFFF;
+  --work: #2A8556;
+  --work-soft: #D5EADD;
+  --held: #A86A10;
+  --held-soft: #F5E4C4;
+  --home: #3A68AB;
+  --home-soft: #D8E4F3;
+  --coin: #E2B33A;
+  --loanc: #5A6BC4;
+  --invc: #1F8A8A;
+  --danger: #B3372C;
+  --shadow: rgba(20, 35, 29, 0.12);
+  --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1512; --surface: #15201B; --fg: #E5EEE8; --muted: #93A79C; --line: #28382F;
+    --accent: #6FD3A4; --on-accent: #0D1512;
+    --work: #55C48A; --work-soft: #173226; --held: #E5A94A; --held-soft: #33270F;
+    --home: #82ABE8; --home-soft: #162740; --coin: #E8C25A;
+    --loanc: #9AA7F0; --invc: #5FCBCB; --danger: #F08A80; --shadow: rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1512; --surface: #15201B; --fg: #E5EEE8; --muted: #93A79C; --line: #28382F;
+  --accent: #6FD3A4; --on-accent: #0D1512;
+  --work: #55C48A; --work-soft: #173226; --held: #E5A94A; --held-soft: #33270F;
+  --home: #82ABE8; --home-soft: #162740; --coin: #E8C25A;
+  --loanc: #9AA7F0; --invc: #5FCBCB; --danger: #F08A80; --shadow: rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1, h2 { font-family: var(--font-display); font-weight: 600; margin: 0; text-wrap: balance; }
+h1 { font-size: 30px; line-height: 1.15; }
+h2 { font-size: 20px; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 52ch; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 16px; cursor: pointer; font-weight: 500; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.btn.danger { color: var(--danger); }
+.btn.danger.armed { background: var(--danger); color: var(--surface); border-color: var(--danger); }
+
+.note { background: var(--held-soft); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.note[hidden] { display: none; }
+.note span { min-width: 0; flex: 1 1 260px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.tile .label { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.tile .val { font-family: var(--font-display); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
+.tile .val div { line-height: 1.25; }
+.tile .sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.tile.t-work .val { color: var(--work); }
+.tile.t-held .val { color: var(--held); }
+.tile.t-home .val { color: var(--home); }
+
+.village { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 14px; align-items: stretch; }
+@media (max-width: 860px) { .village { grid-template-columns: 1fr; } }
+.plot { border-radius: 16px; border: 1px solid var(--line); padding: 14px; min-width: 0; display: flex; flex-direction: column; gap: 10px; min-height: 260px; box-shadow: 0 1px 0 var(--shadow); }
+.plot.fields { background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--work) 22%, transparent) 1px, transparent 1.5px) 0 0 / 14px 14px, var(--work-soft); }
+.plot.bench { background: repeating-linear-gradient(135deg, transparent 0 12px, color-mix(in srgb, var(--held) 10%, transparent) 12px 13px), var(--held-soft); }
+.plot.harbor { background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--invc) 22%, transparent) 1px, transparent 1.5px) 0 0 / 14px 14px, color-mix(in srgb, var(--invc) 14%, var(--surface)); }
+.plot.stall { background: repeating-linear-gradient(90deg, transparent 0 18px, color-mix(in srgb, var(--coin) 14%, transparent) 18px 36px), color-mix(in srgb, var(--coin) 16%, var(--surface)); }
+.plot.harbor .plot-head svg:first-child { color: var(--invc); }
+.plot.stall .plot-head svg:first-child { color: var(--coin); }
+.plot.home { background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--home) 18%, transparent) 1px, transparent 1.5px) 0 0 / 14px 14px, var(--home-soft); }
+.plot-head { display: flex; align-items: center; gap: 10px; }
+.plot-head svg { flex: none; width: 30px; height: 30px; }
+.plot.fields .plot-head svg { color: var(--work); }
+.plot.bench .plot-head svg { color: var(--held); }
+.plot.home .plot-head svg { color: var(--home); }
+.plot-head .t { min-width: 0; }
+.plot-head .sub { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.folk { display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start; flex: 1; }
+.empty { color: var(--muted); font-size: 14px; align-self: center; padding: 8px 4px; }
+
+.person { width: 116px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px 10px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.person:hover { border-color: var(--accent); }
+.person svg.fig { width: 52px; height: 70px; overflow: visible; }
+.person .nm { font-weight: 600; font-size: 13.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person .amt { font-family: var(--font-display); font-size: 15px; font-variant-numeric: tabular-nums; max-width: 100%; overflow-wrap: anywhere; }
+.person .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--loanc); }
+.person .tag.invest { color: var(--invc); }
+.person .meta { font-size: 11.5px; color: var(--muted); max-width: 100%; overflow-wrap: anywhere; line-height: 1.3; }
+.person .ex { font-size: 10.5px; color: var(--muted); border: 1px dashed var(--line); border-radius: 6px; padding: 0 5px; margin-top: 2px; }
+.bob { animation: bob 2.4s ease-in-out infinite; animation-delay: var(--d, 0s); transform-origin: 50% 100%; }
+.sway { animation: sway 3.2s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.spark { animation: spark 1.8s ease-in-out infinite; animation-delay: var(--d, 0s); transform-box: fill-box; transform-origin: center; }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+@keyframes spark { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.25); opacity: 0.7; } }
+.walker { display: block; }
+.walker.w-working, .walker.w-stock { animation: stroll var(--sd, 9s) linear infinite; animation-delay: var(--d, 0s); }
+.walker.w-working .fig, .walker.w-stock .fig { animation: face var(--sd, 9s) linear infinite; animation-delay: var(--d, 0s); }
+@keyframes stroll { 0% { transform: translateX(-22px); } 50% { transform: translateX(22px); } 100% { transform: translateX(-22px); } }
+@keyframes face { 0%, 49.9% { transform: scaleX(1); } 50%, 99.9% { transform: scaleX(-1); } 100% { transform: scaleX(1); } }
+.leg { transform-box: fill-box; transform-origin: 50% 0; }
+.w-working .leg.a, .w-stock .leg.a { animation: step 0.7s ease-in-out infinite; }
+.w-working .leg.b, .w-stock .leg.b { animation: step 0.7s ease-in-out infinite reverse; }
+@keyframes step { 0%, 100% { transform: rotate(22deg); } 50% { transform: rotate(-22deg); } }
+.arm { transform-box: fill-box; }
+.arm.swing { transform-origin: 20% 0; animation: swing 1.1s ease-in-out infinite; }
+@keyframes swing { 0%, 100% { transform: rotate(-18deg); } 50% { transform: rotate(22deg); } }
+.arm.wave { transform-origin: 50% 100%; animation: wave 1.3s ease-in-out infinite; }
+@keyframes wave { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(14deg); } }
+.head-tilt { transform-box: fill-box; transform-origin: 50% 100%; animation: tilt 3.6s ease-in-out infinite; animation-delay: var(--d, 0s); }
+@keyframes tilt { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+.fig .sway, .decor .sway { transform-box: fill-box; transform-origin: 50% 100%; }
+.steward { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 0 16px; }
+.steward summary { cursor: pointer; padding: 12px 0; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; list-style: none; }
+.steward summary::-webkit-details-marker { display: none; }
+.s-title { font-family: var(--font-display); font-weight: 600; font-size: 18px; }
+.s-sub { color: var(--muted); font-size: 13.5px; }
+.s-body { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; }
+.s-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.s-log { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; }
+.smsg { padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14.5px; max-width: 92%; }
+.smsg.user { align-self: flex-end; background: var(--accent); color: var(--on-accent); }
+.smsg.bot { align-self: flex-start; background: var(--bg); border: 1px solid var(--line); }
+.smsg.err { border-color: var(--danger); color: var(--danger); }
+.s-form { display: flex; gap: 8px; }
+.s-form input { flex: 1; min-width: 0; font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 10px; padding: 9px 12px; }
+.hbtns { display: flex; flex-wrap: wrap; gap: 10px; }
+#townwrap { display: none; }
+body.view-town #townwrap { display: block; }
+body.view-town .listonly { display: none !important; }
+#town { position: relative; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; height: clamp(380px, 56vw, 540px); background: #cfe6f2; touch-action: none; user-select: none; -webkit-user-select: none; }
+#town canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.town-hint { margin: 8px 2px 0; color: var(--muted); font-size: 13px; }
+.tnav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.tnav .btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+#zonepanel { margin-top: 14px; }
+.zsum { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.zcard { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.zcard:hover { border-color: var(--accent); }
+.zc-name { font-family: var(--font-display); font-weight: 600; font-size: 17px; }
+.zc-amt { font-family: var(--font-display); font-size: 22px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.zc-n { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.zc-b { font-size: 13.5px; color: var(--muted); }
+.zhead { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+.zlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.zitem { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; align-items: flex-start; }
+.zi-top { display: flex; justify-content: space-between; gap: 10px; width: 100%; align-items: baseline; }
+.zi-top b { font-family: var(--font-display); font-size: 17px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.zi-amt { font-family: var(--font-display); font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.zi-meta { font-size: 13px; color: var(--muted); }
+.zi-meta .late { color: var(--danger); font-weight: 600; }
+.zi-bits { display: flex; flex-wrap: wrap; gap: 6px; }
+.zi-bits span { font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-variant-numeric: tabular-nums; }
+.zi-note { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.urgent { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.u-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.u-title { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
+.u-title.late { color: var(--danger); }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; color: var(--fg); }
+.chip:hover { border-color: var(--accent); }
+.chip span { font-family: var(--font-display); font-variant-numeric: tabular-nums; margin-left: 4px; }
+.chip.rank1 { background: #f6d467; border-color: #c99a1c; color: #1b1b1b; }
+.chip.rank2, .chip.rank3 { border-color: #c99a1c; }
+.chip.latechip-l { border-color: var(--danger); color: var(--danger); }
+.tlabel.rank1, .tlabel.rank2, .tlabel.rank3 { background: #fff0b8; color: #1b1b1b; border-color: #c99a1c; }
+.tlabel.rank1 { background: #f6d467; border-width: 2px; font-size: 13px; }
+.tlabel.late { border-color: #e5493a; border-width: 2px; }
+#tnav input { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 10px; padding: 7px 12px; min-width: 0; flex: 1 1 160px; max-width: 260px; }
+.tinfo { position: absolute; left: 10px; bottom: 10px; max-width: min(340px, calc(100% - 20px)); background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; z-index: 6; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 14px var(--shadow); align-items: flex-start; }
+.ti-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; width: 100%; }
+.ti-top b { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.ti-top span { font-family: var(--font-display); font-size: 18px; font-variant-numeric: tabular-nums; }
+.zi-act { display: flex; flex-wrap: wrap; gap: 8px; }
+.tcontrols { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 5; }
+.tcontrols .btn { padding: 4px 12px; }
+.tlabel { position: absolute; left: 0; top: 0; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 8px; padding: 1px 8px; font-size: 12px; line-height: 1.3; white-space: nowrap; cursor: pointer; box-shadow: 0 1px 3px var(--shadow); display: flex; flex-direction: column; align-items: center; will-change: transform; }
+.tlabel:hover { border-color: var(--accent); }
+.tlabel b { font-weight: 600; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+.tlabel span { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.tzone { position: absolute; left: 0; top: 0; pointer-events: none; font-family: var(--font-display); font-size: 13px; font-weight: 600; padding: 2px 12px; border-radius: 999px; background: var(--surface); color: var(--fg); border: 1px solid var(--line); white-space: nowrap; will-change: transform; }
+.plot-head svg.decor, .decor { margin-left: auto; flex: none; width: 66px; height: 40px; overflow: visible; }
+@media (prefers-reduced-motion: reduce) { .walker, .walker .fig, .leg, .arm, .bob, .sway, .spark, .head-tilt { animation: none !important; } }
+
+.sheet { position: fixed; inset: 0; background: rgba(8, 14, 11, 0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 20; padding-top: env(safe-area-inset-top, 0px); }
+.sheet[hidden] { display: none; }
+.panel { background: var(--surface); width: 100%; max-width: 560px; max-height: 92%; overflow-y: auto; border-radius: 18px 18px 0 0; border: 1px solid var(--line); padding: 18px max(16px, env(safe-area-inset-left, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 640px) { .sheet { align-items: center; } .panel { border-radius: 18px; } }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 440px) { .grid2 { grid-template-columns: 1fr; } }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+input, select, textarea { font: inherit; font-weight: 400; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; min-width: 0; }
+textarea { resize: vertical; min-height: 56px; }
+fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--muted); padding: 0 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.actions .right { display: flex; gap: 10px; margin-left: auto; }
+.err { color: var(--danger); font-size: 13px; min-height: 1em; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Money Village</h1>
+      <p>Every amount you lend or invest is a villager. Watch where each one is working, waiting, or back home.</p>
+    </div>
+    <div class="hbtns">
+      <button class="btn" id="exp-btn" type="button" hidden>Export data</button>
+      <button class="btn" id="imp-btn" type="button" hidden>Import data</button>
+      <input id="imp-file" type="file" accept="application/json,.json" hidden>
+      <button class="btn" id="view-btn" type="button" hidden>List view</button>
+      <button class="btn primary" id="add-btn" type="button">Add a villager</button>
+    </div>
+  </header>
+
+  <div class="note" id="note" hidden></div>
+
+  <section class="tiles" id="tiles" aria-label="Totals"></section>
+
+  <details class="steward" id="steward">
+    <summary><span class="s-title">The Steward</span><span class="s-sub">Ask about your money. It only reads your entries and never changes them.</span></summary>
+    <div class="s-body">
+      <div class="s-chips" id="s-chips"></div>
+      <div class="s-log" id="s-log" aria-live="polite"></div>
+      <form class="s-form" id="s-form" autocomplete="off">
+        <input id="s-input" placeholder="Ask the Steward…" maxlength="400">
+        <button class="btn primary" id="s-send" type="submit">Ask</button>
+      </form>
+    </div>
+  </details>
+
+  <div id="townwrap">
+    <div class="urgent" id="urgent"></div>
+    <div class="tnav" id="tnav"></div>
+    <div id="town">
+      <div class="tcontrols">
+        <button class="btn" id="zin" type="button" aria-label="Zoom in">+</button>
+        <button class="btn" id="zout" type="button" aria-label="Zoom out">&minus;</button>
+        <button class="btn" id="zreset" type="button">Reset view</button>
+      </div>
+    </div>
+    <p class="town-hint">Drag to turn the view. Pinch or scroll to zoom. Pick a part of the town above to open it up.</p>
+    <div id="zonepanel"></div>
+  </div>
+  <section class="village listonly" id="village" aria-label="The village"></section>
+  <section class="village listonly" id="debts" aria-label="Money you owe" style="grid-template-columns:1fr" hidden></section>
+  <section class="village listonly" id="personal" aria-label="Personal, outside the business" style="grid-template-columns:1fr" hidden></section>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <form class="panel" id="form" autocomplete="off">
+    <h2 id="form-title">Add a villager</h2>
+    <div class="grid2">
+      <label>Who or what
+        <input id="f-name" required maxlength="60" placeholder="e.g. Ali, shop stock, gold">
+      </label>
+      <label>Type
+        <select id="f-kind">
+          <option value="loan">Lent out</option>
+          <option value="investment">Invested</option>
+          <option value="owed">Owed to me</option>
+          <option value="debt">I owe someone</option>
+          <option value="personal">Personal, outside the business</option>
+        </select>
+      </label>
+      <label>Amount
+        <input id="f-amount" required inputmode="decimal" placeholder="0">
+      </label>
+      <label>Currency
+        <select id="f-currency">
+          <option value="USD">USD</option>
+          <option value="LBP">LBP</option>
+        </select>
+      </label>
+      <label>Where is it now
+        <select id="f-status">
+          <option value="working">Working (out earning)</option>
+          <option value="held">Held up (stuck or waiting)</option>
+          <option value="transit">In transit (shipping to me)</option>
+          <option value="stock">In stock (in hand, unsold)</option>
+          <option value="done">Back home (returned)</option>
+        </select>
+      </label>
+      <label>Due or expected back
+        <input id="f-due" type="date">
+      </label>
+      <label>Shipping still to pay
+        <input id="f-ship" inputmode="decimal" placeholder="0">
+      </label>
+      <label>Already recovered
+        <input id="f-rec" inputmode="decimal" placeholder="0">
+      </label>
+    </div>
+    <fieldset>
+      <legend>Profit</legend>
+      <div class="grid2">
+        <label>Expected profit
+          <input id="f-exp" inputmode="decimal" placeholder="0">
+        </label>
+        <label>Profit received
+          <input id="f-got" inputmode="decimal" placeholder="0">
+        </label>
+        <label>Profit held up
+          <input id="f-ph" inputmode="decimal" placeholder="0">
+        </label>
+      </div>
+    </fieldset>
+    <label>Where it is held, or why it is waiting
+      <input id="f-where" maxlength="80" placeholder="e.g. with a supplier, in a savings account">
+    </label>
+    <label>Note
+      <textarea id="f-note" maxlength="300"></textarea>
+    </label>
+    <fieldset>
+      <legend>Look</legend>
+      <div class="grid2">
+        <label>Outfit<select id="f-outfit"><option value="">Auto</option><option value="teal">Teal</option><option value="blue">Blue</option><option value="purple">Purple</option><option value="red">Red</option><option value="orange">Orange</option><option value="green">Green</option><option value="pink">Pink</option><option value="black">Black</option><option value="yellow">Yellow</option></select></label>
+        <label>Hair<select id="f-hair"><option value="">Auto</option><option value="short">Short</option><option value="long">Long</option><option value="bun">Bun</option><option value="spiky">Spiky</option><option value="cap">Cap</option><option value="sprout">Sprout</option><option value="bald">Bald</option></select></label>
+        <label>Hair color<select id="f-hairc"><option value="">Auto</option><option value="black">Black</option><option value="brown">Brown</option><option value="dark">Dark</option><option value="ginger">Ginger</option><option value="blonde">Blonde</option><option value="grey">Grey</option></select></label>
+        <label>Accessory<select id="f-acc"><option value="">Auto</option><option value="none">None</option><option value="glasses">Glasses</option><option value="beard">Beard</option><option value="scarf">Scarf</option><option value="bag">Backpack</option></select></label>
+      </div>
+    </fieldset>
+    <div class="err" id="f-err" role="alert"></div>
+    <div class="actions">
+      <button type="button" class="btn danger" id="f-del" hidden>Delete</button>
+      <div class="right">
+        <button type="button" class="btn" id="f-cancel">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var state = { items: [], loaded: false, slow: false, error: null, editing: null };
+  var store = null;
+  var chain = Promise.resolve();
+
+  function enqueue(fn) {
+    chain = chain.then(fn).catch(function (e) {
+      var el = document.getElementById("f-err");
+      state.error = (e && e.code) || "unavailable";
+      render();
+    });
+    return chain;
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function num(x) { var n = parseFloat(String(x).replace(/,/g, "")); return isFinite(n) ? n : 0; }
+  var nf = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+  var nf2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function nfmt(n) { return Number.isInteger(n) ? nf.format(n) : nf2.format(n); }
+  function money(n, cur) { return cur === "LBP" ? nfmt(n) + " LBP" : "$" + nfmt(n); }
+  function hash(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+
+  function sumBy(items, pred, fn) {
+    var m = {};
+    items.forEach(function (v) {
+      if (!pred(v)) return;
+      var c = v.currency || "USD";
+      m[c] = (m[c] || 0) + fn(v);
+    });
+    return m;
+  }
+  function lines(m) {
+    var keys = ["USD", "LBP"].filter(function (k) { return m[k]; });
+    if (!keys.length) return "<div>$0</div>";
+    return keys.map(function (k) { return "<div>" + money(m[k], k) + "</div>"; }).join("");
+  }
+  function plain(m) {
+    var keys = ["USD", "LBP"].filter(function (k) { return m[k]; });
+    return keys.length ? keys.map(function (k) { return money(m[k], k); }).join(" · ") : "$0";
+  }
+
+  var SKINS = ["#F0C8A0", "#D9A577", "#B97E52", "#8A5A3A"];
+  function wstyle(v, i) { var h = hash(v.id || String(i)); return "--d:-" + (h % 9) + "s;--sd:" + (8 + (h % 6)) + "s"; }
+
+  function sprout(x, dl) {
+    return '<g class="sway" style="--d:' + dl + 's"><path d="M' + x + ' 38V24" stroke="var(--work)" stroke-width="2.5" stroke-linecap="round"/>' +
+      '<path d="M' + x + ' 29c-6 0-9-3-9-8 6 0 9 3 9 8Z" fill="var(--work)"/><path d="M' + x + ' 25c5 0 8-3 8-8-5 0-8 3-8 8Z" fill="var(--work)"/></g>';
+  }
+  function decor(cls) {
+    if (cls === "fields") {
+      return '<svg class="decor" viewBox="0 0 66 40" aria-hidden="true"><path d="M2 38h62" stroke="var(--work)" stroke-width="2" stroke-linecap="round"/>' +
+        sprout(12, "0") + sprout(33, "-1") + sprout(54, "-2") + "</svg>";
+    }
+    if (cls === "bench") {
+      return '<svg class="decor" viewBox="0 0 66 40" aria-hidden="true"><path d="M4 38h58" stroke="var(--held)" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M50 38V14" stroke="var(--held)" stroke-width="3" stroke-linecap="round"/><circle class="spark" style="--d:0s" cx="50" cy="10" r="6" fill="var(--coin)" stroke="var(--held)" stroke-width="1.5"/>' +
+        '<rect x="8" y="26" width="30" height="5" rx="2" fill="var(--held)"/><rect x="11" y="31" width="3" height="7" fill="var(--held)"/><rect x="32" y="31" width="3" height="7" fill="var(--held)"/></svg>';
+    }
+    if (cls === "harbor") {
+      return '<svg class="decor" viewBox="0 0 66 40" aria-hidden="true"><path d="M2 38h62" stroke="var(--invc)" stroke-width="2" stroke-linecap="round"/><g class="sway" style="--d:0s"><path d="M10 30h28l-5 7H15Z" fill="var(--invc)"/><path d="M24 30V8" stroke="var(--fg)" stroke-width="2"/><path d="M26 10l10 16H26Z" fill="var(--surface)" stroke="var(--invc)" stroke-width="1.5"/></g><rect x="48" y="12" width="8" height="24" fill="var(--surface)" stroke="var(--invc)" stroke-width="2"/><circle class="spark" style="--d:0s" cx="52" cy="8" r="4" fill="var(--coin)"/></svg>';
+    }
+    if (cls === "stall") {
+      return '<svg class="decor" viewBox="0 0 66 40" aria-hidden="true"><path d="M2 38h62" stroke="var(--coin)" stroke-width="2" stroke-linecap="round"/><path d="M8 14h50l-4-9H12Z" fill="var(--coin)"/><path d="M8 14c0 4 6 4 6 0 0 4 6 4 6 0 0 4 6 4 6 0 0 4 6 4 6 0 0 4 6 4 6 0 0 4 6 4 6 0" fill="var(--surface)" stroke="var(--coin)" stroke-width="2"/><rect x="12" y="24" width="42" height="14" rx="2" fill="var(--surface)" stroke="var(--coin)" stroke-width="2"/></svg>';
+    }
+    return '<svg class="decor" viewBox="0 0 66 40" aria-hidden="true"><path d="M2 38h62" stroke="var(--home)" stroke-width="2" stroke-linecap="round"/>' +
+      '<path d="M12 20 33 4l21 16Z" fill="var(--home)"/><rect x="16" y="20" width="34" height="18" rx="2" fill="var(--surface)" stroke="var(--home)" stroke-width="2"/>' +
+      '<rect x="29" y="26" width="9" height="12" rx="1.5" fill="var(--home)"/><rect x="19" y="24" width="6" height="6" fill="var(--coin)"/></svg>';
+  }
+
+  function figure(v, i) {
+    var h = hash(v.id || String(i));
+    var skin = SKINS[h % SKINS.length];
+    var body = v.kind === "investment" ? "var(--invc)" : (v.kind === "owed" ? "var(--home)" : "var(--loanc)");
+    var d = "--d:-" + (h % 5) + "s";
+    var s = v.status;
+    var hat = v.kind === "investment"
+      ? '<g class="sway" style="' + d + '"><path d="M28 14 C26 6 19 5 16 7 C17 13 22 15 28 14Z M28 14 C30 6 37 5 40 7 C39 13 34 15 28 14Z" fill="var(--work)"/></g>'
+      : '<path d="M17 20 C18 10 38 10 39 20 L39 22 L17 22Z" fill="var(--loanc)" stroke="var(--fg)" stroke-opacity=".25"/>';
+    var legs = '<rect class="leg a" x="20" y="58" width="6" height="13" rx="3" fill="#2d3b36"/><rect class="leg b" x="30" y="58" width="6" height="13" rx="3" fill="#2d3b36"/>';
+    var armL = '<rect x="10" y="38" width="5" height="15" rx="2.5" fill="' + skin + '"/>';
+    var armR = '<rect x="41" y="38" width="5" height="15" rx="2.5" fill="' + skin + '"/>';
+    var extra = "", front = "";
+    if (s === "working" || s === "stock") {
+      armR = '<g class="arm swing"><rect x="41" y="38" width="5" height="15" rx="2.5" fill="' + skin + '"/><path d="M45 50 L53 28" stroke="#8a5a3a" stroke-width="2.5" stroke-linecap="round"/><path d="M51 27 L57 25 L56 31Z" fill="#8c9a94"/></g>';
+      extra = '<circle class="spark" style="' + d + '" cx="8" cy="12" r="5" fill="var(--coin)" stroke="var(--fg)" stroke-opacity=".3"/>';
+    } else if (s === "held" || s === "transit") {
+      front = '<rect x="6" y="57" width="44" height="6" rx="3" fill="#8a5a3a"/><rect x="10" y="62" width="4" height="9" fill="#6b4429"/><rect x="42" y="62" width="4" height="9" fill="#6b4429"/>';
+      extra = '<g transform="translate(46 8)"><circle r="7" fill="var(--surface)" stroke="var(--held)" stroke-width="2"/><path d="M0 -4 V0 L3 2" fill="none" stroke="var(--held)" stroke-width="2" stroke-linecap="round"/></g>';
+    } else {
+      armR = '<g class="arm wave"><rect x="41" y="30" width="5" height="15" rx="2.5" fill="' + skin + '" transform="rotate(-25 43 44)"/></g>';
+      extra = '<g transform="translate(46 63)"><ellipse cx="0" cy="3" rx="6" ry="2.5" fill="var(--coin)"/><ellipse cx="0" cy="0" rx="6" ry="2.5" fill="var(--coin)" stroke="var(--fg)" stroke-opacity=".3"/></g>';
+    }
+    var anim = (s === "held" || s === "transit") ? "head-tilt" : "bob";
+    return '<svg class="fig" viewBox="-2 0 62 76" aria-hidden="true"><ellipse cx="28" cy="71" rx="17" ry="4" fill="var(--shadow)"/>' + legs +
+      '<g class="' + anim + '" style="' + d + '">' + armL +
+      '<rect x="14" y="34" width="28" height="28" rx="10" fill="' + body + '"/>' +
+      '<circle cx="28" cy="49" r="5" fill="var(--coin)" stroke="var(--fg)" stroke-opacity=".3"/>' + armR +
+      '<circle cx="28" cy="24" r="11" fill="' + skin + '"/>' +
+      '<circle cx="24" cy="25" r="1.4" fill="#1b1b1b"/><circle cx="32" cy="25" r="1.4" fill="#1b1b1b"/>' +
+      '<path d="M24.5 30 Q28 32.5 31.5 30" fill="none" stroke="#1b1b1b" stroke-width="1.2" stroke-linecap="round"/>' +
+      hat + extra + '</g>' + front + '</svg>';
+  }
+
+  function figureOld(v, i) {
+    var skin = SKINS[hash(v.id || String(i)) % SKINS.length];
+    var body = v.kind === "investment" ? "var(--invc)" : "var(--loanc)";
+    var d = "--d:" + ((i % 5) * 0.35).toFixed(2) + "s";
+    var hat = v.kind === "investment"
+      ? '<g class="sway" style="' + d + '"><path d="M28 14 C26 6 19 5 16 7 C17 13 22 15 28 14Z M28 14 C30 6 37 5 40 7 C39 13 34 15 28 14Z" fill="var(--work)"/></g>'
+      : '<path d="M17 20 C18 10 38 10 39 20 L39 22 L17 22Z" fill="var(--loanc)" stroke="var(--fg)" stroke-opacity=".25"/>';
+    var acc = "";
+    if (v.status === "working") acc = '<circle class="spark" style="' + d + '" cx="46" cy="10" r="5" fill="var(--coin)" stroke="var(--fg)" stroke-opacity=".3"/>';
+    else if (v.status === "held") acc = '<g transform="translate(46 10)"><circle r="7" fill="var(--surface)" stroke="var(--held)" stroke-width="2"/><path d="M0 -4 V0 L3 2" fill="none" stroke="var(--held)" stroke-width="2" stroke-linecap="round"/></g>';
+    else acc = '<g transform="translate(46 62)"><ellipse cx="0" cy="4" rx="6" ry="2.5" fill="var(--coin)"/><ellipse cx="0" cy="0" rx="6" ry="2.5" fill="var(--coin)" stroke="var(--fg)" stroke-opacity=".3"/></g>';
+    var anim = v.status === "held" ? "" : "bob";
+    return '<svg class="fig" viewBox="0 0 56 76" aria-hidden="true">' +
+      '<ellipse cx="28" cy="71" rx="17" ry="4" fill="var(--shadow)"/>' +
+      '<g class="' + anim + '" style="' + d + '">' +
+      '<rect x="14" y="34" width="28" height="31" rx="10" fill="' + body + '"/>' +
+      '<circle cx="28" cy="49" r="5" fill="var(--coin)" stroke="var(--fg)" stroke-opacity=".3"/>' +
+      '<circle cx="28" cy="24" r="11" fill="' + skin + '"/>' +
+      '<circle cx="24" cy="25" r="1.4" fill="#1b1b1b"/><circle cx="32" cy="25" r="1.4" fill="#1b1b1b"/>' +
+      '<path d="M24.5 30 Q28 32.5 31.5 30" fill="none" stroke="#1b1b1b" stroke-width="1.2" stroke-linecap="round"/>' +
+      hat + acc + '</g></svg>';
+  }
+
+  function personHtml(v, i) {
+    var kindLabel = v.kind === "investment" ? "Invested" : (v.kind === "owed" ? "Owed" : (v.kind === "debt" ? "I owe" : (v.kind === "personal" ? "Personal" : "Lent")));
+    var meta = "";
+    if (v.due && v.status !== "done" && v.due < new Date().toISOString().slice(0, 10)) meta = "Overdue: " + esc(fmtDate(v.due));
+    else if (v.status === "held") meta = v.where ? esc(v.where) : "Waiting";
+    else if (v.status === "transit") meta = v.where ? esc(v.where) : "On its way";
+    else if (v.status === "stock") meta = v.where ? esc(v.where) : "In hand, unsold";
+    else if (v.status === "working") meta = v.due ? "Back by " + esc(fmtDate(v.due)) : (v.where ? esc(v.where) : "");
+    else meta = num(v.profitReceived) ? "Profit " + money(num(v.profitReceived), v.currency) : "Returned";
+    var extra = num(v.profitHeld) ? '<div class="meta">Profit held: ' + money(num(v.profitHeld), v.currency) + "</div>" : "";
+    if (num(v.shipping)) extra += '<div class="meta">Shipping to pay: ' + money(num(v.shipping), v.currency) + "</div>";
+    return '<button type="button" class="person" data-id="' + esc(v.id) + '">' +
+      '<span class="walker w-' + esc(v.status) + '" style="' + wstyle(v, i) + '">' + figure(v, i) + "</span>" +
+      '<span class="nm" title="' + esc(v.name) + '">' + esc(v.name) + "</span>" +
+      '<span class="amt">' + money(num(v.amount), v.currency) + "</span>" +
+      '<span class="tag ' + (v.kind === "investment" ? "invest" : "") + '">' + kindLabel + "</span>" +
+      (meta ? '<span class="meta">' + meta + "</span>" : "") + extra +
+      (v.example ? '<span class="ex">example</span>' : "") + "</button>";
+  }
+
+  function fmtDate(s) {
+    var d = new Date(s + "T00:00:00");
+    if (isNaN(d)) return s;
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  }
+
+  var ICONS = {
+    fields: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 28V12"/><path d="M16 16c-5 0-8-3-8-8 5 0 8 3 8 8Z"/><path d="M16 20c5 0 8-3 8-8-5 0-8 3-8 8Z"/><path d="M5 28h22"/></svg>',
+    bench: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="16" cy="16" r="11"/><path d="M16 9v7l4 3"/></svg>',
+    harbor: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="16" cy="7" r="3"/><path d="M16 10v17"/><path d="M9 15h14"/><path d="M6 20c1 5 5 7 10 7s9-2 10-7"/></svg>',
+    stall: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12 7 5h18l3 7"/><path d="M4 12c0 3 3 3 4 0 1 3 4 3 4 0 1 3 4 3 4 0 1 3 4 3 4 0 1 3 4 3 4 0"/><path d="M6 15v12h20V15"/><path d="M13 27v-7h6v7"/></svg>',
+    home: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15 16 5l12 10"/><path d="M7 13v14h18V13"/><path d="M13 27v-8h6v8"/></svg>'
+  };
+
+  function render() {
+    var debts = state.items.filter(function (v) { return v.kind === "debt"; });
+    var personals = state.items.filter(function (v) { return v.kind === "personal"; });
+    var items = state.items.filter(function (v) { return v.kind !== "debt" && v.kind !== "personal"; });
+    var openDebts = debts.filter(function (v) { return v.status !== "done"; });
+    var owe = sumBy(openDebts, function () { return true; }, function (v) { return num(v.amount); });
+    var perOwe = sumBy(personals, function (v) { return v.status !== "done"; }, function (v) { return num(v.amount); });
+    var proj = sumBy(items, function (v) { return v.status !== "done"; }, function (v) { return Math.max(0, num(v.amount) + Math.max(0, num(v.expectedProfit) - num(v.profitReceived)) - num(v.recovered) - num(v.shipping)); });
+    var net = {};
+    ["USD", "LBP"].forEach(function (c) { var n = (proj[c] || 0) - (owe[c] || 0); if (n) net[c] = n; });
+    var working = items.filter(function (v) { return v.status === "working"; });
+    var held = items.filter(function (v) { return v.status === "held"; });
+    var done = items.filter(function (v) { return v.status === "done"; });
+    var transit = items.filter(function (v) { return v.status === "transit"; });
+    var stock = items.filter(function (v) { return v.status === "stock"; });
+
+    var out = sumBy(items, function (v) { return v.status !== "done"; }, function (v) { return num(v.amount); });
+    var wk = sumBy(working, function () { return true; }, function (v) { return num(v.amount); });
+    var tr = sumBy(transit, function () { return true; }, function (v) { return num(v.amount); });
+    var sk = sumBy(stock, function () { return true; }, function (v) { return num(v.amount); });
+    var hd = sumBy(held, function () { return true; }, function (v) { return num(v.amount); });
+    var made = sumBy(items, function () { return true; }, function (v) { return num(v.profitReceived); });
+    var expct = sumBy(items, function (v) { return v.status !== "done"; }, function (v) { return Math.max(0, num(v.expectedProfit) - num(v.profitReceived)); });
+    var stuck = sumBy(items, function () { return true; }, function (v) { return num(v.profitHeld); });
+    var back = sumBy(done, function () { return true; }, function (v) { return num(v.amount); });
+
+    document.getElementById("tiles").innerHTML =
+      '<div class="tile"><div class="label">Still out</div><div class="val">' + lines(out) + '</div><div class="sub">' + items.filter(function (v) { return v.status !== "done"; }).length + " villagers away from home</div></div>" +
+      '<div class="tile t-work"><div class="label">Working</div><div class="val">' + lines(wk) + '</div><div class="sub">' + working.length + " in the fields</div></div>" +
+      '<div class="tile t-held"><div class="label">Held up</div><div class="val">' + lines(hd) + '</div><div class="sub">' + held.length + " on the bench</div></div>" +
+      '<div class="tile t-work"><div class="label">In transit</div><div class="val">' + lines(tr) + '</div><div class="sub">' + transit.length + " at the harbor</div></div>" +
+      '<div class="tile t-work"><div class="label">In stock</div><div class="val">' + lines(sk) + '</div><div class="sub">' + stock.length + " at the market stall</div></div>" +
+      '<div class="tile t-home"><div class="label">Profit made</div><div class="val">' + lines(made) + '</div><div class="sub">Still expected: ' + plain(expct) + "</div></div>" +
+      '<div class="tile t-held"><div class="label">Profit held up</div><div class="val">' + lines(stuck) + '</div><div class="sub">Earned, not in your hands yet</div></div>' +
+      '<div class="tile"><div class="label">You owe</div><div class="val">' + lines(owe) + '</div><div class="sub">' + (openDebts.length ? openDebts.length + " to pay back" : "Nothing to pay back") + "</div></div>" +
+      '<div class="tile t-home"><div class="label">If everything comes in</div><div class="val">' + lines(net) + '</div><div class="sub">Cash back, minus shipping and what you owe. Unsold stock counted at cost.</div></div>' +
+      '<div class="tile"><div class="label">Personal, still to pay</div><div class="val">' + lines(perOwe) + '</div><div class="sub">From your own money, not counted above</div></div>';
+
+    function plot(cls, icon, title, sub, list, emptyText) {
+      return '<div class="plot ' + cls + '"><div class="plot-head">' + ICONS[icon] +
+        '<div class="t"><h2>' + title + '</h2><div class="sub">' + sub + "</div></div>" + decor(cls) + "</div>" +
+        '<div class="folk">' + (list.length ? list.sort(function (a, b) { return num(b.amount) - num(a.amount); }).map(personHtml).join("") : '<div class="empty">' + emptyText + "</div>") + "</div></div>";
+    }
+    var loadingText = state.loaded ? null : "Gathering the villagers…";
+    document.getElementById("village").innerHTML =
+      plot("fields", "fields", "The Fields", "Working: " + plain(wk), working, loadingText || "Nobody is out working right now.") +
+      plot("bench", "bench", "The Waiting Bench", "Held up: " + plain(hd), held, loadingText || "Nobody is stuck. Good.") +
+      plot("home", "home", "Home", "Returned: " + plain(back), done, loadingText || "Nobody has come home yet.") +
+      plot("harbor", "harbor", "The Harbor", "On its way: " + plain(tr), transit, loadingText || "Nothing is shipping right now.") +
+      plot("stall", "stall", "The Market Stall", "In stock: " + plain(sk), stock, loadingText || "No stock in hand right now.");
+
+    if (townSync) {
+      try { townSync(state.items); } catch (err) { townFail(); }
+    }
+    var dEl = document.getElementById("debts");
+    dEl.hidden = !debts.length;
+    dEl.innerHTML = debts.length ? plot("bench", "bench", "Money You Owe", "Still to pay back: " + plain(owe), debts, "") : "";
+    var pEl = document.getElementById("personal");
+    pEl.hidden = !personals.length;
+    var pOpen = sumBy(personals, function (v) { return v.status !== "done"; }, function (v) { return num(v.amount); });
+    pEl.innerHTML = personals.length ? plot("home", "home", "Personal, Outside the Business", "To pay from my own money: " + plain(pOpen), personals, "") : "";
+    var note = document.getElementById("note");
+    var msgs = [];
+    if (state.error) msgs.push("Something went wrong saving or loading (" + esc(state.error) + "). Your last change may not be saved.");
+    else if (state.slow && !state.loaded) msgs.push("Still trying to reach your saved village. What you see may be out of date.");
+    else if (state.local) msgs.push(state.persist ? "Your data is saved in this browser only. Use Export data now and then to keep a backup, and Import data to load it on another device." : "Saving is not available in this view, so changes will be lost when you close the page.");
+    var hasEx = items.some(function (v) { return v.example; });
+    if (!msgs.length && hasEx) {
+      note.innerHTML = '<span>These villagers are examples to show how it works. Tell Claude your real loans and investments, or edit them yourself.</span><button type="button" class="btn" id="clear-ex">Remove examples</button>';
+      note.hidden = false;
+    } else if (msgs.length) {
+      note.innerHTML = "<span>" + msgs[0] + "</span>";
+      note.hidden = false;
+    } else {
+      note.hidden = true;
+    }
+  }
+
+  /* --- editing --- */
+  var sheet = document.getElementById("sheet");
+  var delBtn = document.getElementById("f-del");
+  function $(id) { return document.getElementById(id); }
+
+  function readLook() {
+    var L = {};
+    [["outfit", "f-outfit"], ["hair", "f-hair"], ["hairc", "f-hairc"], ["acc", "f-acc"]].forEach(function (p) {
+      var x = document.getElementById(p[1]).value;
+      if (x) L[p[0]] = x;
+    });
+    return L;
+  }
+  function openSheet(v) {
+    state.editing = v ? v.id : null;
+    $("form-title").textContent = v ? "Edit villager" : "Add a villager";
+    $("f-name").value = v ? v.name : "";
+    $("f-kind").value = v ? v.kind : "loan";
+    $("f-amount").value = v ? v.amount : "";
+    $("f-currency").value = v ? v.currency : "USD";
+    $("f-status").value = v ? v.status : "working";
+    $("f-due").value = v && v.due ? v.due : "";
+    $("f-ship").value = v && v.shipping ? v.shipping : "";
+    $("f-rec").value = v && v.recovered ? v.recovered : "";
+    var lk = (v && v.look) || {};
+    $("f-outfit").value = lk.outfit || ""; $("f-hair").value = lk.hair || ""; $("f-hairc").value = lk.hairc || ""; $("f-acc").value = lk.acc || "";
+    $("f-exp").value = v && v.expectedProfit ? v.expectedProfit : "";
+    $("f-got").value = v && v.profitReceived ? v.profitReceived : "";
+    $("f-ph").value = v && v.profitHeld ? v.profitHeld : "";
+    $("f-where").value = v && v.where ? v.where : "";
+    $("f-note").value = v && v.note ? v.note : "";
+    $("f-err").textContent = "";
+    delBtn.hidden = !v;
+    delBtn.classList.remove("armed");
+    delBtn.textContent = "Delete";
+    sheet.hidden = false;
+    $("f-name").focus();
+  }
+  function closeSheet() { sheet.hidden = true; state.editing = null; }
+
+  $("add-btn").addEventListener("click", function () { openSheet(null); });
+  $("f-cancel").addEventListener("click", closeSheet);
+  sheet.addEventListener("click", function (e) { if (e.target === sheet) closeSheet(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !sheet.hidden) closeSheet(); });
+
+  $("village").addEventListener("click", function (e) {
+    var b = e.target.closest(".person");
+    if (!b) return;
+    var v = state.items.filter(function (x) { return x.id === b.getAttribute("data-id"); })[0];
+    if (v) openSheet(v);
+  });
+
+  $("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var name = $("f-name").value.trim();
+    var amount = num($("f-amount").value);
+    if (!name) { $("f-err").textContent = "Give this villager a name."; return; }
+    if (!(amount > 0)) { $("f-err").textContent = "Enter an amount greater than zero."; return; }
+    var existing = state.editing ? state.items.filter(function (x) { return x.id === state.editing; })[0] : null;
+    var obj = {
+      id: existing ? existing.id : store.newId(),
+      name: name,
+      kind: $("f-kind").value,
+      amount: amount,
+      currency: $("f-currency").value,
+      status: $("f-status").value,
+      due: $("f-due").value || "",
+      shipping: num($("f-ship").value),
+      recovered: num($("f-rec").value),
+      look: readLook(),
+      expectedProfit: num($("f-exp").value),
+      profitReceived: num($("f-got").value),
+      profitHeld: num($("f-ph").value),
+      where: $("f-where").value.trim(),
+      note: $("f-note").value.trim(),
+      example: false,
+      createdAt: existing && existing.createdAt ? existing.createdAt : new Date().toISOString()
+    };
+    closeSheet();
+    enqueue(function () { return store.save(obj); });
+  });
+
+  delBtn.addEventListener("click", function () {
+    if (!delBtn.classList.contains("armed")) {
+      delBtn.classList.add("armed");
+      delBtn.textContent = "Tap again to delete";
+      return;
+    }
+    var id = state.editing;
+    closeSheet();
+    if (id) enqueue(function () { return store.remove(id); });
+  });
+
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "clear-ex") {
+      state.items.filter(function (v) { return v.example; }).forEach(function (v) {
+        enqueue(function () { return store.remove(v.id); });
+      });
+    }
+  });
+
+  /* --- storage --- */
+  function useLocal() {
+    state.local = true;
+    var KEY = "moneyVillage.v1";
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) state.items = arr; }
+    } catch (err) { /* ignore */ }
+    function persist() {
+      try { localStorage.setItem(KEY, JSON.stringify(state.items)); state.persist = true; } catch (err) { state.persist = false; }
+    }
+    persist();
+    store = {
+      newId: function () { return "v" + Math.random().toString(36).slice(2, 10); },
+      save: function (o) {
+        var i = state.items.findIndex(function (x) { return x.id === o.id; });
+        if (i >= 0) state.items[i] = o; else state.items.push(o);
+        persist(); render(); return Promise.resolve();
+      },
+      remove: function (id) { state.items = state.items.filter(function (x) { return x.id !== id; }); persist(); render(); return Promise.resolve(); }
+    };
+    var eb = document.getElementById("exp-btn"), ib = document.getElementById("imp-btn"), fi = document.getElementById("imp-file");
+    eb.hidden = false; ib.hidden = false;
+    eb.addEventListener("click", function () {
+      try {
+        var blob = new Blob([JSON.stringify(state.items, null, 2)], { type: "application/json" });
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "money-village-data.json";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+      } catch (err) { state.error = "export"; render(); }
+    });
+    ib.addEventListener("click", function () { fi.click(); });
+    fi.addEventListener("change", function () {
+      var f = fi.files && fi.files[0];
+      if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () {
+        try {
+          var data = JSON.parse(String(rd.result));
+          var list = Array.isArray(data) ? data : (data && Array.isArray(data.villagers) ? data.villagers : []);
+          list.forEach(function (o) {
+            if (!o || typeof o !== "object" || !o.name || !(num(o.amount) >= 0)) return;
+            if (!o.id) o.id = store.newId();
+            var i = state.items.findIndex(function (x) { return x.id === o.id; });
+            if (i >= 0) state.items[i] = o; else state.items.push(o);
+          });
+          persist(); state.error = null; render();
+        } catch (err) { state.error = "import"; render(); }
+        fi.value = "";
+      };
+      rd.readAsText(f);
+    });
+    state.loaded = true;
+    render();
+  }
+
+  /* --- The Steward (read-only assistant) --- */
+  function openSteward() {
+    var d = document.getElementById("steward");
+    if (!d) return;
+    d.open = true;
+    try { d.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (err) { /* ignore */ }
+    var inp = document.getElementById("s-input");
+    if (inp) inp.focus();
+  }
+  function stewardFacts() {
+    var today = new Date().toISOString().slice(0, 10);
+    var all = state.items;
+    var biz = all.filter(function (v) { return v.kind !== "debt" && v.kind !== "personal"; });
+    var open = biz.filter(function (v) { return v.status !== "done"; });
+    var debts = all.filter(function (v) { return v.kind === "debt" && v.status !== "done"; });
+    var pers = all.filter(function (v) { return v.kind === "personal" && v.status !== "done"; });
+    var all1 = function () { return true; };
+    var proj = sumBy(open, all1, function (v) { return Math.max(0, num(v.amount) + Math.max(0, num(v.expectedProfit) - num(v.profitReceived)) - num(v.recovered) - num(v.shipping)); });
+    var owe = sumBy(debts, all1, function (v) { return num(v.amount); });
+    var per = sumBy(pers, all1, function (v) { return num(v.amount); });
+    var net = {};
+    ["USD", "LBP"].forEach(function (c) { var n = (proj[c] || 0) - (owe[c] || 0); if (n) net[c] = Math.round(n * 100) / 100; });
+    return {
+      today: today,
+      totals: {
+        working_in_fields: sumBy(open, function (v) { return v.status === "working"; }, function (v) { return num(v.amount); }),
+        held_up_on_bench: sumBy(open, function (v) { return v.status === "held"; }, function (v) { return num(v.amount); }),
+        profit_received_so_far: sumBy(biz, all1, function (v) { return num(v.profitReceived); }),
+        expected_cash_back_if_everything_comes_in: proj,
+        owed_to_others_like_father: owe,
+        net_after_paying_what_I_owe: net,
+        personal_still_to_pay_back_from_own_pocket: per
+      },
+      meaning_of_status: { working: "out earning", held: "stuck, late or waiting to arrive", transit: "ordered or shipped and on its way (The Harbor)", stock: "in my hands, unsold stock ready to sell (The Market Stall)", done: "already back in my hands" },
+      items: all.map(function (v) {
+        return {
+          name: v.name, type: v.kind, amount: num(v.amount), currency: v.currency || "USD", status: v.status,
+          due: v.due || null, overdue: !!(v.due && v.status !== "done" && v.due < today),
+          where: v.where || null, expected_profit: num(v.expectedProfit), profit_received: num(v.profitReceived),
+          profit_held_up: num(v.profitHeld), shipping_still_to_pay: num(v.shipping), already_recovered: num(v.recovered), note: v.note || null
+        };
+      })
+    };
+  }
+  var sHist = [], sBusy = false;
+  function sAdd(role, text) {
+    var log = document.getElementById("s-log");
+    var d = document.createElement("div");
+    d.className = "smsg " + role;
+    d.textContent = text;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+    return d;
+  }
+  async function stewardAsk(q) {
+    q = String(q || "").trim();
+    if (!q || sBusy) return;
+    var btn = document.getElementById("s-send");
+    sAdd("user", q);
+    var bot = sAdd("bot", "Thinking…");
+    sBusy = true; btn.disabled = true;
+    try {
+      var sample = window.claude && window.claude.use ? await window.claude.use("sample") : null;
+      if (!sample) throw { code: "unavailable" };
+      var intro = "You are the Steward of Money Village, a careful assistant for one small card seller in Lebanon who tracks loans, investments, money owed to him, partner splits and profit. " +
+        "Rules: use ONLY the data below. Every total was computed by the app, so quote those totals exactly and never recompute them differently. Never invent amounts, names or dates; if something is missing, say it is missing. " +
+        "You can only read this data. You cannot change it. If a change is needed, tell him which villager to edit and what to enter. " +
+        "Amounts are USD unless the currency says LBP. Answer in plain text with short lines. No markdown headings or bold. Be direct and practical, and put what to do first at the top.\n\n" +
+        "DATA (today is " + stewardFacts().today + "):\n" + JSON.stringify(stewardFacts());
+      var msgs = [];
+      sHist.slice(-5).forEach(function (h, i) {
+        msgs.push({ role: "user", content: (i === 0 ? intro + "\n\nQUESTION: " : "") + h.q });
+        msgs.push({ role: "assistant", content: h.a });
+      });
+      msgs.push({ role: "user", content: (msgs.length ? "" : intro + "\n\nQUESTION: ") + q });
+      var res = await sample(msgs, {
+        cache: false,
+        onText: function (x) { bot.textContent = x.text; document.getElementById("s-log").scrollTop = 1e6; }
+      });
+      var out = (res && res.text) || bot.textContent;
+      bot.textContent = out;
+      sHist.push({ q: q, a: out });
+    } catch (e) {
+      var c = e && e.code;
+      bot.textContent = c === "not_granted" ? "The Steward needs your permission to use Claude here. Ask again and allow it when asked." :
+        c === "rate_limited" ? "The Steward is being asked too often. Try again in a minute." :
+        "The Steward isn't available in this view right now.";
+      bot.className = "smsg bot err";
+    }
+    sBusy = false; btn.disabled = false;
+  }
+  (function stewardUi() {
+    var chips = [
+      ["Brief me", "Give me a short briefing: what is most urgent, what is overdue, and what I should chase first this week."],
+      ["End of December", "If everything comes in as recorded, how much will I have by the end of December? Show the steps using the app's totals and say what could lower it."],
+      ["Draft reminders", "Draft short, friendly WhatsApp reminders in simple English, one per person, for everyone who owes me money and is overdue or due soon. Do not invent amounts."],
+      ["What is unclear?", "What in my records is missing, unclear or inconsistent? Point out missing due dates, unknown shipping costs and anything that needs a decision."]
+    ];
+    var box = document.getElementById("s-chips");
+    chips.forEach(function (c) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.textContent = c[0];
+      b.addEventListener("click", function () { stewardAsk(c[1]); });
+      box.appendChild(b);
+    });
+    document.getElementById("s-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var inp = document.getElementById("s-input");
+      var q = inp.value;
+      inp.value = "";
+      stewardAsk(q);
+    });
+    if (!(window.claude && window.claude.use)) { document.getElementById("steward").hidden = true; }
+    sAdd("bot", "I'm the Steward. Ask me about what to chase first, what you'll have by December, or who to remind. I can only read your entries and never change them.");
+  })();
+
+  /* --- 3D town --- */
+  var townSync = null;
+  function townFail() {
+    townSync = null;
+    document.body.classList.remove("view-town");
+    var vb = document.getElementById("view-btn");
+    if (vb) vb.hidden = true;
+  }
+  function initTown() {
+    var wrap = document.getElementById("townwrap");
+    var host = document.getElementById("town");
+    var viewBtn = document.getElementById("view-btn");
+    var nav = document.getElementById("tnav");
+    var panel = document.getElementById("zonepanel");
+    var urgent = document.getElementById("urgent");
+    if (!wrap || !host || !nav || !panel || !urgent || typeof THREE === "undefined") return;
+    var renderer;
+    try { renderer = new THREE.WebGLRenderer({ antialias: true }); } catch (err) { return; }
+    var still = false;
+    try { still = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (err) { still = false; }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setClearColor(0xcfe6f2, 1);
+    host.insertBefore(renderer.domElement, host.firstChild);
+    renderer.domElement.setAttribute("role", "img");
+    renderer.domElement.setAttribute("aria-label", "3D view of the village. Use the buttons above to open a part of the town.");
+    host.tabIndex = 0;
+
+    var SKY = 0xcfe6f2;
+    var scene = new THREE.Scene();
+    scene.background = new THREE.Color(SKY);
+    scene.fog = new THREE.Fog(SKY, 150, 300);
+    var camera = new THREE.PerspectiveCamera(40, 1.6, 0.5, 600);
+    scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x7c9a6c, 0.75));
+    var sun = new THREE.DirectionalLight(0xfff1d6, 0.7);
+    sun.position.set(-40, 64, 62);
+    sun.target.position.set(0, 0, 18);
+    scene.add(sun.target);
+    sun.castShadow = true;
+    var smap = window.innerWidth < 700 ? 2048 : 4096;
+    sun.shadow.mapSize.set(smap, smap);
+    sun.shadow.camera.left = -62; sun.shadow.camera.right = 62;
+    sun.shadow.camera.top = 78; sun.shadow.camera.bottom = -78;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 260;
+    sun.shadow.bias = -0.0006;
+    scene.add(sun);
+
+    var mats = {};
+    function mat(c) {
+      if (!mats[c]) mats[c] = new THREE.MeshStandardMaterial({ color: c, roughness: 0.88, metalness: 0 });
+      return mats[c];
+    }
+    function put(m, x, y, z, parent) {
+      m.position.set(x, y, z);
+      m.castShadow = true; m.receiveShadow = true;
+      if (parent) parent.add(m);
+      return m;
+    }
+    function box(w, h, d, c, x, y, z, parent) { return put(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c)), x, y, z, parent); }
+    function cyl(rt, rb, h, c, x, y, z, parent, seg) { return put(new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg || 14), mat(c)), x, y, z, parent); }
+    function cone(r, h, c, x, y, z, parent, seg) { return put(new THREE.Mesh(new THREE.ConeGeometry(r, h, seg || 10), mat(c)), x, y, z, parent); }
+    function ball(r, c, x, y, z, parent) { return put(new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), mat(c)), x, y, z, parent); }
+    function pivot(parent, x, y) { var p = new THREE.Group(); p.position.set(x, y, 0); parent.add(p); return p; }
+
+    var world = new THREE.Group();
+    scene.add(world);
+    var ZONES = {
+      fields: { cx: -19, cz: -14, w: 28, d: 22, name: "The Fields", plate: 0x8a6a48, wz0: -1, wz1: 8.5, blurb: "Money that is out working for you." },
+      square: { cx: 19, cz: -14, w: 28, d: 22, name: "The Waiting Bench", plate: 0xdcc99a, wz0: -4, wz1: 8.5, blurb: "Money that is stuck, late or waiting to arrive." },
+      home: { cx: -19, cz: 14, w: 28, d: 22, name: "Home", plate: 0xb9d8b3, wz0: -2, wz1: 8.5, blurb: "Money that has come back to you." },
+      count: { cx: 19, cz: 14, w: 28, d: 22, name: "Money You Owe", plate: 0xcdb79b, wz0: -3, wz1: 8.5, blurb: "What you owe, plus personal money to pay back." },
+      harbor: { cx: -19, cz: 42, w: 28, d: 22, name: "The Harbor", plate: 0xc9d4d8, wz0: -1, wz1: 8.5, blurb: "Orders and shipments on their way to you." },
+      stall: { cx: 19, cz: 42, w: 28, d: 22, name: "The Market Stall", plate: 0xe6d3a8, wz0: -4, wz1: 8.5, blurb: "Stock you are holding and ready to sell." }
+    };
+    var ZORDER = ["fields", "square", "home", "count", "harbor", "stall"];
+
+    var seed = 11;
+    function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+    function rr(a, b) { return a + rnd() * (b - a); }
+    function patch(r, c, x, z) {
+      var m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), mat(c));
+      m.rotation.x = -Math.PI / 2; m.position.set(x, 0.03, z); m.receiveShadow = true;
+      world.add(m);
+    }
+    var far = new THREE.Group();
+    world.add(far);
+
+    box(140, 0.4, 170, 0x8fc48f, 0, -0.2, 18, world);
+    for (var gp = 0; gp < 60; gp++) patch(rr(2.5, 7), gp % 2 ? 0x86ba86 : 0x9ad09a, rr(-64, 64), rr(-48, 84));
+    box(140, 0.1, 6, 0xe8e0cc, 0, 0.06, 0, world);
+    box(140, 0.1, 6, 0xe8e0cc, 0, 0.06, 28, world);
+    box(6, 0.1, 170, 0xe8e0cc, 0, 0.07, 18, world);
+    box(130, 0.02, 0.2, 0xcfc4a8, 0, 0.13, 2.9, world);
+    box(130, 0.02, 0.2, 0xcfc4a8, 0, 0.13, -2.9, world);
+    box(0.2, 0.02, 170, 0xcfc4a8, 2.9, 0.14, 18, world);
+    box(0.2, 0.02, 170, 0xcfc4a8, -2.9, 0.14, 18, world);
+
+    var spray = [];
+    (function plaza() {
+      cyl(7, 7.2, 0.18, 0xd9cfb4, 0, 0.12, 0, world, 48);
+      cyl(5.6, 5.6, 0.04, 0xc9bd9c, 0, 0.22, 0, world, 48);
+      cyl(2.7, 2.9, 0.8, 0xb8a784, 0, 0.55, 0, world, 28);
+      cyl(2.3, 2.3, 0.1, 0x5fb4e0, 0, 0.98, 0, world, 28);
+      cyl(0.4, 0.5, 2.0, 0xb8a784, 0, 1.9, 0, world, 12);
+      ball(0.65, 0xe2b33a, 0, 3.1, 0, world);
+      for (var i = 0; i < 12; i++) {
+        var d = ball(0.13, 0x9fd8f5, 0, 2, 0, world);
+        d.castShadow = false;
+        spray.push({ m: d, ph: i / 12, ang: i * 0.52 });
+      }
+      for (var a = 0; a < 8; a++) {
+        var ax = Math.cos(a * Math.PI / 4) * 6.3, az = Math.sin(a * Math.PI / 4) * 6.3;
+        box(1.4, 0.45, 0.5, 0x9a6a3e, ax, 0.5, az, world).rotation.y = -a * Math.PI / 4 + Math.PI / 2;
+      }
+    })();
+
+    function hedge(x, z, w, d) { box(w, 0.9, d, 0x3a8a4e, x, 0.65, z, world); box(w * 0.98, 0.25, d * 0.8, 0x4aa863, x, 1.2, z, world); }
+    ZORDER.forEach(function (k) {
+      var z = ZONES[k];
+      box(z.w + 1.4, 0.12, z.d + 1.4, 0x6f5a40, z.cx, 0.06, z.cz, world);
+      box(z.w, 0.2, z.d, z.plate, z.cx, 0.12, z.cz, world);
+      var backZ = z.cz + (z.cz < 0 ? -1 : -1) * (z.d / 2 + 0.2);
+      hedge(z.cx, z.cz - z.d / 2 - 0.4, z.w + 1.8, 1.0);
+      hedge(z.cx - z.w / 2 - 0.4, z.cz, 1.0, z.d + 1.0);
+      hedge(z.cx + z.w / 2 + 0.4, z.cz, 1.0, z.d + 1.0);
+    });
+
+    var crops = [], windmill = null, clouds = [], coinStat = null, boats = [];
+    (function buildFields() {
+      var z = ZONES.fields;
+      var rows = [-9.2, -7.0, -4.8, -2.6];
+      rows.forEach(function (rz, ri) {
+        box(25, 0.16, 0.7, 0x5b4129, z.cx, 0.3, z.cz + rz, world);
+        for (var i = 0; i < 19; i++) {
+          var x = z.cx - 11.7 + i * 1.3, c;
+          if (ri === 0) c = cone(0.28, 0.8, 0x3da35d, x, 0.75, z.cz + rz, world, 8);
+          else if (ri === 1) { c = ball(0.32, 0xe8892e, x, 0.62, z.cz + rz, world); c.scale.y = 0.8; }
+          else if (ri === 2) c = cone(0.28, 0.9, 0x5cc06a, x, 0.8, z.cz + rz, world, 8);
+          else { c = cyl(0.09, 0.09, 1.2, 0xd8c25a, x, 0.9, z.cz + rz, world, 6); cone(0.16, 0.4, 0xe9d26a, x, 1.6, z.cz + rz, world, 6); }
+          crops.push({ m: c, ph: i * 0.7 + rz });
+        }
+      });
+      for (var f = -13; f <= 13; f += 2) box(0.16, 0.85, 0.16, 0x8a5a3a, z.cx + f, 0.65, z.cz + 10, world);
+      box(28, 0.12, 0.12, 0x8a5a3a, z.cx, 0.95, z.cz + 10, world);
+      box(28, 0.12, 0.12, 0x8a5a3a, z.cx, 0.6, z.cz + 10, world);
+      box(4, 2.4, 3.2, 0xb88a56, z.cx + 10.5, 1.3, z.cz - 8.2, world);
+      var rf = cone(3.4, 1.6, 0x9a4a35, z.cx + 10.5, 3.3, z.cz - 8.2, world, 4);
+      rf.rotation.y = Math.PI / 4;
+      box(0.9, 1.5, 0.1, 0x6b4429, z.cx + 10.5, 0.95, z.cz - 6.55, world);
+      cyl(1.0, 1.5, 5.4, 0xe9dcc2, z.cx - 11.5, 2.8, z.cz - 8.6, world, 14);
+      cone(1.5, 1.6, 0x9a4a35, z.cx - 11.5, 6.4, z.cz - 8.6, world, 14);
+      windmill = new THREE.Group();
+      windmill.position.set(z.cx - 11.5, 5.4, z.cz - 7.4);
+      world.add(windmill);
+      for (var b = 0; b < 4; b++) {
+        var arm = new THREE.Group();
+        arm.rotation.z = b * Math.PI / 2;
+        box(0.4, 3.6, 0.1, 0xfaf3e0, 0, 1.9, 0, arm);
+        box(0.7, 2.2, 0.06, 0xfdf9ee, 0.45, 2.3, 0, arm);
+        windmill.add(arm);
+      }
+      ball(0.32, 0x6b4429, 0, 0, 0, windmill);
+      for (var h = 0; h < 4; h++) { var hb = cyl(0.7, 0.7, 1.1, 0xd9c46a, z.cx + 4 + h * 1.6, 0.7, z.cz - 11.6 + (h % 2) * 0.3, world, 14); hb.rotation.z = Math.PI / 2; hb.rotation.y = 0.3; }
+      cyl(0.08, 0.1, 2.6, 0x8a5a3a, z.cx + 3, 1.4, z.cz + 2.2, world, 6);
+      box(1.8, 0.12, 0.12, 0x8a5a3a, z.cx + 3, 2.1, z.cz + 2.2, world);
+      ball(0.3, 0xf0c8a0, z.cx + 3, 2.85, z.cz + 2.2, world);
+      cone(0.45, 0.5, 0x5a3a22, z.cx + 3, 3.3, z.cz + 2.2, world, 10);
+      cyl(3.4, 3.4, 0.1, 0x5fb4e0, z.cx + 10.5, 0.24, z.cz + 5.5, world, 28);
+      cyl(3.6, 3.6, 0.08, 0xb8a784, z.cx + 10.5, 0.2, z.cz + 5.5, world, 28);
+      for (var r2 = 0; r2 < 6; r2++) cyl(0.03, 0.03, 1.1, 0x4a8a3a, z.cx + 7.4 + rnd() * 0.8, 0.8, z.cz + 4 + r2 * 0.5, world, 5);
+    })();
+
+    var SEATS = [];
+    (function buildSquare() {
+      var z = ZONES.square;
+      [-10, -5, 0, 5, 10].forEach(function (ox) {
+        box(3.2, 0.25, 0.9, 0x9a6a3e, z.cx + ox, 0.62, z.cz - 8.6, world);
+        box(3.2, 0.75, 0.16, 0x8a5a3a, z.cx + ox, 1.1, z.cz - 9.1, world);
+        box(0.2, 0.5, 0.7, 0x6b4429, z.cx + ox - 1.4, 0.4, z.cz - 8.6, world);
+        box(0.2, 0.5, 0.7, 0x6b4429, z.cx + ox + 1.4, 0.4, z.cz - 8.6, world);
+        SEATS.push({ x: z.cx + ox - 0.75, z: z.cz - 8.4 });
+        SEATS.push({ x: z.cx + ox + 0.75, z: z.cz - 8.4 });
+        for (var fl = 0; fl < 5; fl++) { cyl(0.03, 0.03, 0.3, 0x3da35d, z.cx + ox - 1.2 + fl * 0.6, 0.4, z.cz - 10.2, world, 5); ball(0.12, [0xf06a8a, 0xf4d46a, 0xb08ae0][fl % 3], z.cx + ox - 1.2 + fl * 0.6, 0.62, z.cz - 10.2, world); }
+      });
+      [[-13, 9.5], [13, 9.5], [-13, -3], [13, -3], [0, 9.5]].forEach(function (p) {
+        cyl(0.12, 0.14, 3.4, 0x5a4a3a, z.cx + p[0], 1.9, z.cz + p[1], world, 8);
+        ball(0.45, 0xf4d46a, z.cx + p[0], 3.7, z.cz + p[1], world);
+      });
+      box(3, 1.1, 3, 0xb8a784, z.cx, 0.8, z.cz + 3, world);
+      coinStat = new THREE.Group();
+      coinStat.position.set(z.cx, 2.7, z.cz + 3);
+      world.add(coinStat);
+      var cd = cyl(1.4, 1.4, 0.35, 0xe2b33a, 0, 0, 0, coinStat, 28); cd.rotation.x = Math.PI / 2;
+      var cd2 = cyl(1.0, 1.0, 0.4, 0xf4d46a, 0, 0, 0, coinStat, 28); cd2.rotation.x = Math.PI / 2;
+      box(4, 2.4, 3, 0xe9d3b0, z.cx + 9.5, 1.4, z.cz + 4.5, world);
+      box(4.8, 0.3, 3.8, 0xd9443a, z.cx + 9.5, 2.8, z.cz + 4.5, world);
+      box(4.8, 0.32, 1.2, 0xffffff, z.cx + 9.5, 2.82, z.cz + 4.9, world);
+    })();
+
+    (function buildHome() {
+      var z = ZONES.home;
+      var cols = [0xe9d3b0, 0xc9d8ee, 0xf1c9c0, 0xdbe8c4];
+      var roofs = [0xb5503c, 0x4a6fa5, 0xa04a68, 0x6b8a4a];
+      [-10.5, -3.5, 3.5, 10.5].forEach(function (ox, i) {
+        box(4.6, 3.1, 3.6, cols[i], z.cx + ox, 1.65, z.cz - 8, world);
+        var roof = cone(3.9, 2.0, roofs[i], z.cx + ox, 4.2, z.cz - 8, world, 4);
+        roof.rotation.y = Math.PI / 4;
+        box(0.7, 1.3, 0.14, 0x6b4429, z.cx + ox, 0.95, z.cz - 6.15, world);
+        box(0.8, 0.8, 0.12, 0xf4d46a, z.cx + ox - 1.5, 1.9, z.cz - 6.15, world);
+        box(0.8, 0.8, 0.12, 0xf4d46a, z.cx + ox + 1.5, 1.9, z.cz - 6.15, world);
+        box(0.6, 1.6, 0.6, 0x9a8a7a, z.cx + ox + 1.2, 4.2, z.cz - 8.4, world);
+        for (var g = 0; g < 4; g++) {
+          cyl(0.03, 0.03, 0.3, 0x3da35d, z.cx + ox - 1.2 + g * 0.8, 0.4, z.cz - 5.2, world, 5);
+          ball(0.14, [0xf06a8a, 0xffffff, 0xf4d46a, 0xb08ae0][g], z.cx + ox - 1.2 + g * 0.8, 0.64, z.cz - 5.2, world);
+        }
+      });
+      cyl(1.1, 1.1, 0.9, 0x9a9a9a, z.cx, 0.6, z.cz + 4, world, 18);
+      cyl(0.85, 0.85, 0.12, 0x4a90b8, z.cx, 1.02, z.cz + 4, world, 18);
+      box(0.14, 1.9, 0.14, 0x6b4429, z.cx - 0.95, 1.6, z.cz + 4, world);
+      box(0.14, 1.9, 0.14, 0x6b4429, z.cx + 0.95, 1.6, z.cz + 4, world);
+      var wr = cone(1.5, 0.9, 0x9a4a35, z.cx, 2.9, z.cz + 4, world, 4); wr.rotation.y = Math.PI / 4;
+    })();
+
+    (function buildCount() {
+      var z = ZONES.count;
+      box(15, 3.6, 4.2, 0xe2cdb0, z.cx, 1.9, z.cz - 8, world);
+      box(16, 0.7, 5.2, 0xb3372c, z.cx, 4.0, z.cz - 8, world);
+      box(3.4, 1.1, 0.14, 0xf4d46a, z.cx, 5.0, z.cz - 5.8, world);
+      box(1.4, 2.2, 0.14, 0x6b4429, z.cx, 1.3, z.cz - 5.9, world);
+      [-5, -2.5, 2.5, 5].forEach(function (ox) { cyl(0.28, 0.28, 3.4, 0xf2ead8, z.cx + ox, 1.9, z.cz - 5.7, world, 12); });
+      box(3.4, 3.2, 3.2, 0x8a8f98, z.cx + 10.2, 1.7, z.cz - 7.5, world);
+      var vd = cyl(0.9, 0.9, 0.2, 0xb8bec6, z.cx + 10.2, 1.7, z.cz - 5.8, world, 24); vd.rotation.x = Math.PI / 2;
+      [-9, 9].forEach(function (ox) {
+        for (var i = 0; i < 6; i++) cyl(0.55, 0.55, 0.2, 0xe2b33a, z.cx + ox * 0.55, 0.4 + i * 0.22, z.cz - 3.2, world, 18);
+        for (var j = 0; j < 4; j++) cyl(0.55, 0.55, 0.2, 0xf4d46a, z.cx + ox * 0.55 + 1.3, 0.4 + j * 0.22, z.cz - 3.4, world, 18);
+      });
+      box(2.6, 0.18, 1.4, 0x8a5a3a, z.cx - 9, 1.1, z.cz + 2, world);
+      box(0.14, 1.0, 0.14, 0x6b4429, z.cx - 10.1, 0.6, z.cz + 1.5, world);
+      box(0.14, 1.0, 0.14, 0x6b4429, z.cx - 7.9, 0.6, z.cz + 2.5, world);
+    })();
+
+    (function buildHarbor() {
+      var z = ZONES.harbor;
+      box(z.w, 0.16, 8.5, 0x4aa3d8, z.cx, 0.26, z.cz - 6.6, world);
+      box(z.w, 0.3, 0.5, 0x8a8f98, z.cx, 0.3, z.cz - 2.1, world);
+      [-8, 8].forEach(function (ox) {
+        box(3, 0.22, 9, 0x9a6a3e, z.cx + ox, 0.42, z.cz - 6.5, world);
+        for (var p = 0; p < 4; p++) cyl(0.18, 0.18, 1.2, 0x6b4429, z.cx + ox + (p % 2 ? 1.3 : -1.3), 0.5, z.cz - 9.5 + (p > 1 ? 3 : 0), world, 8);
+      });
+      [[-3, -7, 0xb5503c], [3.5, -5.2, 0x3a68ab]].forEach(function (b, i) {
+        var boat = new THREE.Group();
+        boat.position.set(z.cx + b[0], 0.5, z.cz + b[1]);
+        world.add(boat);
+        box(4.2, 0.9, 1.7, b[2], 0, 0, 0, boat);
+        box(3.2, 0.1, 1.5, 0xb88a56, 0, 0.5, 0, boat);
+        cyl(0.07, 0.07, 3.6, 0x6b4429, 0, 2.2, 0, boat, 8);
+        box(0.06, 2.4, 1.7, 0xfdf9ee, 0, 2.2, 0.1, boat);
+        boats.push({ g: boat, ph: i * 2.1 });
+      });
+      [[-11, 3, 0xd9443a], [-11, 6, 0x3a68ab], [-7.6, 3, 0x3da35d], [-7.6, 6, 0xe2b33a]].forEach(function (c) { box(3.2, 2.2, 2.2, c[2], z.cx + c[0], 1.2, z.cz + c[1], world); });
+      box(2.4, 1.6, 1.8, 0x3da35d, z.cx - 11, 3.3, z.cz + 3, world);
+      for (var br = 0; br < 5; br++) cyl(0.5, 0.5, 1.0, 0x8a5a3a, z.cx + 6 + (br % 3) * 1.2, 0.7, z.cz + 4 + Math.floor(br / 3) * 1.2, world, 12);
+      box(0.6, 5.6, 0.6, 0xe9a04a, z.cx + 3, 2.9, z.cz + 1, world);
+      box(5.4, 0.5, 0.5, 0xe9a04a, z.cx + 5.5, 5.5, z.cz + 1, world);
+      box(0.08, 1.8, 0.08, 0x333333, z.cx + 8.1, 4.5, z.cz + 1, world);
+      cyl(1.3, 1.7, 8, 0xffffff, z.cx + 11.3, 4.4, z.cz - 9, world, 16);
+      [2.2, 5.2].forEach(function (y) { cyl(1.38 - y * 0.03, 1.52 - y * 0.03, 1.2, 0xd9443a, z.cx + 11.3, y + 1, z.cz - 9, world, 16); });
+      ball(1.0, 0xf4d46a, z.cx + 11.3, 8.9, z.cz - 9, world);
+      cone(1.3, 1.1, 0xd9443a, z.cx + 11.3, 10.1, z.cz - 9, world, 16);
+      [[-13, 8.5], [13, 8.5]].forEach(function (p) {
+        cyl(0.12, 0.14, 3.4, 0x5a4a3a, z.cx + p[0], 1.9, z.cz + p[1], world, 8);
+        ball(0.45, 0xf4d46a, z.cx + p[0], 3.7, z.cz + p[1], world);
+      });
+    })();
+
+    (function buildStall() {
+      var z = ZONES.stall;
+      var awn = [0xd9443a, 0x3a68ab, 0xe2b33a, 0x3da35d];
+      [-9, -3, 3, 9].forEach(function (ox, i) {
+        box(4.2, 1.1, 1.6, 0x9a6a3e, z.cx + ox, 0.75, z.cz - 7, world);
+        [-2, 2].forEach(function (px) { cyl(0.1, 0.1, 2.9, 0x6b4429, z.cx + ox + px, 1.6, z.cz - 8, world, 8); cyl(0.1, 0.1, 2.9, 0x6b4429, z.cx + ox + px, 1.6, z.cz - 6, world, 8); });
+        var aw = box(4.8, 0.16, 2.8, awn[i], z.cx + ox, 3.1, z.cz - 7, world); aw.rotation.x = -0.22;
+        box(4.8, 0.17, 0.8, 0xffffff, z.cx + ox, 3.0, z.cz - 6.1, world).rotation.x = -0.22;
+        for (var c = 0; c < 4; c++) box(0.6, 0.85, 0.08, [0xf06a8a, 0x3a68ab, 0xe2b33a, 0x3da35d][(c + i) % 4], z.cx + ox - 1.5 + c * 1.0, 1.7, z.cz - 7, world);
+        box(1.3, 0.9, 1.0, 0xb88a56, z.cx + ox, 0.55, z.cz - 9.4, world);
+      });
+      for (var f = 0; f < 2; f++) {
+        cyl(0.1, 0.12, 5, 0x5a4a3a, z.cx - 12 + f * 24, 2.6, z.cz + 2, world, 8);
+        for (var t = 0; t < 4; t++) { var fl = cone(0.5, 0.9, [0xd9443a, 0xe2b33a, 0x3a68ab, 0x3da35d][t], z.cx - 12 + f * 24, 4.4 - t * 0.9, z.cz + 2.5 + (f ? -0.5 : 0.5), world, 3); fl.rotation.x = Math.PI; }
+      }
+      box(2.6, 0.9, 1.4, 0x8a5a3a, z.cx + 7, 0.9, z.cz + 4, world);
+      [-1, 1].forEach(function (s) { var w = cyl(0.55, 0.55, 0.2, 0x4a3b2d, z.cx + 7 + s * 0.9, 0.55, z.cz + 4.8, world, 14); w.rotation.x = Math.PI / 2; });
+      for (var cr = 0; cr < 3; cr++) box(1.2, 1.2, 1.2, 0xb88a56, z.cx - 7 + cr * 1.3, 0.8, z.cz + 5, world);
+      [[-13, 8.5], [13, 8.5], [0, 8.5]].forEach(function (p) {
+        cyl(0.12, 0.14, 3.4, 0x5a4a3a, z.cx + p[0], 1.9, z.cz + p[1], world, 8);
+        ball(0.45, 0xf4d46a, z.cx + p[0], 3.7, z.cz + p[1], world);
+      });
+    })();
+
+    function tree(x, z, kind, s, grp) {
+      var g = grp || world;
+      if (kind === 0) {
+        cyl(0.2 * s, 0.3 * s, 1.5 * s, 0x6b4429, x, 0.75 * s, z, g, 8);
+        ball(1.5 * s, 0x3f9a5c, x, 2.5 * s, z, g);
+        ball(1.1 * s, 0x4aa86a, x + 0.9 * s, 2.1 * s, z + 0.3 * s, g);
+        ball(1.0 * s, 0x58b575, x - 0.8 * s, 3.1 * s, z - 0.2 * s, g);
+      } else if (kind === 1) {
+        cyl(0.2 * s, 0.3 * s, 1.0 * s, 0x6b4429, x, 0.5 * s, z, g, 8);
+        cone(1.7 * s, 2.0 * s, 0x2f7d4d, x, 2.0 * s, z, g, 10);
+        cone(1.3 * s, 1.8 * s, 0x3a8d58, x, 3.2 * s, z, g, 10);
+        cone(0.9 * s, 1.6 * s, 0x469d66, x, 4.3 * s, z, g, 10);
+      } else if (kind === 2) {
+        cyl(0.15 * s, 0.22 * s, 1.2 * s, 0x8a6a48, x, 0.6 * s, z, g, 8);
+        ball(1.3 * s, 0xe9a0b8, x, 2.1 * s, z, g);
+        ball(0.9 * s, 0xf2b8c9, x + 0.8 * s, 1.8 * s, z, g);
+      } else {
+        ball(0.8 * s, 0x3f9a5c, x, 0.5 * s, z, g);
+        ball(0.6 * s, 0x4aa86a, x + 0.7 * s, 0.35 * s, z + 0.2 * s, g);
+        ball(0.5 * s, 0x58b575, x - 0.6 * s, 0.3 * s, z - 0.3 * s, g);
+      }
+    }
+    function inPlate(x, z) {
+      for (var k in ZONES) { var q = ZONES[k]; if (Math.abs(x - q.cx) < q.w / 2 + 2.5 && Math.abs(z - q.cz) < q.d / 2 + 2.5) return true; }
+      if (Math.abs(x) < 8 && Math.abs(z) < 8) return true;
+      if (Math.abs(x) < 4.5 || Math.abs(z) < 4.5 || Math.abs(z - 28) < 4.5) return true;
+      return false;
+    }
+    (function forest() {
+      var placed = 0, tries = 0;
+      while (placed < 170 && tries < 2000) {
+        tries++;
+        var x = rr(-66, 66), z = rr(-50, 86);
+        if (inPlate(x, z)) continue;
+        var edge = Math.abs(x) > 40 || Math.abs(z) > 32;
+        if (!edge && rnd() < 0.55) continue;
+        tree(x, z, Math.floor(rr(0, 4)), rr(0.8, 1.35), edge ? far : world);
+        placed++;
+      }
+      [[-34, -26], [34, -26], [-34, 28], [34, 28], [-34, 0], [34, 0], [-34, 56], [34, 56]].forEach(function (p, i) { tree(p[0] + rr(-1, 1), p[1] + rr(-1, 1), i % 4, 1.2, world); });
+      for (var h = -3; h <= 3; h++) {
+        var hl = ball(14, 0x7fb87f, h * 24 + rr(-4, 4), 0, -58 + rr(-3, 3), far); hl.scale.set(1.8, 0.32, 1.1);
+        var hl2 = ball(14, 0x74b074, h * 24 + 12 + rr(-4, 4), 0, 96 + rr(-3, 3), far); hl2.scale.set(1.8, 0.3, 1.1);
+      }
+      for (var rk = 0; rk < 18; rk++) {
+        var rx = rr(-58, 58), rz = rr(-46, 46);
+        if (inPlate(rx, rz)) continue;
+        var rm = new THREE.Mesh(new THREE.DodecahedronGeometry(rr(0.5, 1.1)), mat(0x9aa0a4));
+        rm.position.set(rx, 0.3, rz); rm.castShadow = true; rm.receiveShadow = true;
+        world.add(rm);
+      }
+      [[-52, -4], [52, 6]].forEach(function (p) {
+        cyl(5, 5.2, 0.1, 0x5fb4e0, p[0], 0.14, p[1], world, 32);
+        cyl(5.3, 5.5, 0.08, 0xb8a784, p[0], 0.1, p[1], world, 32);
+        for (var lp = 0; lp < 5; lp++) cyl(0.55, 0.55, 0.04, 0x4aa56a, p[0] + rr(-3, 3), 0.22, p[1] + rr(-3, 3), world, 12);
+      });
+      far.traverse(function (m) { m.castShadow = false; });
+    })();
+
+    (function flowers() {
+      var cols = [0xf06a8a, 0xf4d46a, 0xffffff, 0xb08ae0, 0xff9a4a];
+      for (var i = 0; i < 90; i++) {
+        var x = rr(-60, 60), z = rr(-48, 84);
+        if (Math.abs(x) < 4 || Math.abs(z) < 4 || Math.abs(z - 28) < 4) continue;
+        var tooClose = false;
+        for (var k in ZONES) { var q = ZONES[k]; if (Math.abs(x - q.cx) < q.w / 2 + 0.5 && Math.abs(z - q.cz) < q.d / 2 + 0.5) tooClose = true; }
+        if (tooClose) continue;
+        var s = cyl(0.03, 0.03, 0.3, 0x3da35d, x, 0.2, z, world, 5); s.castShadow = false;
+        var f = ball(0.11, cols[Math.floor(rnd() * cols.length)], x, 0.42, z, world); f.castShadow = false;
+      }
+    })();
+
+    (function cloudsBuild() {
+      for (var i = 0; i < 10; i++) {
+        var c = new THREE.Group();
+        [[0, 0, 0, 3.2], [3, -0.4, 0.6, 2.5], [-3, -0.3, -0.4, 2.4], [1.2, 1.1, 0, 2.2], [-1.5, 0.9, 0.5, 1.8]].forEach(function (b) {
+          var m = ball(b[3], 0xffffff, b[0], b[1], b[2], c);
+          m.castShadow = false; m.receiveShadow = false;
+        });
+        c.position.set(-100 + i * 21, 26 + (i % 4) * 3, -45 + (i * 17) % 90);
+        world.add(c);
+        clouds.push(c);
+      }
+    })();
+
+    function makeSign() {
+      var canvas = document.createElement("canvas");
+      canvas.width = 640; canvas.height = 150;
+      var tex = new THREE.CanvasTexture(canvas);
+      var spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+      spr.scale.set(15, 3.5, 1);
+      spr.renderOrder = 10;
+      world.add(spr);
+      return { canvas: canvas, tex: tex, spr: spr, text: "" };
+    }
+    function drawSign(s, title, sub) {
+      var key = title + "|" + sub;
+      if (s.text === key) return;
+      s.text = key;
+      var c = s.canvas.getContext("2d");
+      c.clearRect(0, 0, 640, 150);
+      c.fillStyle = "#fffdf6"; c.strokeStyle = "#8a5a3a"; c.lineWidth = 6;
+      var x = 8, y = 8, w = 624, h = 134, r = 22;
+      c.beginPath();
+      c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+      c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+      c.fill(); c.stroke();
+      c.fillStyle = "#14231D"; c.textAlign = "center"; c.textBaseline = "middle";
+      c.font = "600 50px Fredoka, 'Trebuchet MS', sans-serif";
+      c.fillText(title, 320, 54);
+      c.fillStyle = "#53665C";
+      c.font = "500 38px Inter, Arial, sans-serif";
+      c.fillText(sub, 320, 104);
+      s.tex.needsUpdate = true;
+    }
+    var signs = {};
+    ZORDER.forEach(function (k) {
+      var s = makeSign();
+      s.spr.position.set(ZONES[k].cx, 9.2, ZONES[k].cz + 2);
+      signs[k] = s;
+      drawSign(s, ZONES[k].name, "");
+    });
+
+    /* characters */
+    var SKINS3 = [0xf0c8a0, 0xd9a577, 0xb97e52, 0x8a5a3a];
+    var OUTFITS = { teal: 0x1f8a8a, blue: 0x3a68ab, purple: 0x5a6bc4, red: 0xb3372c, orange: 0xe08a2e, green: 0x3da35d, pink: 0xd96a9a, black: 0x2b2f36, yellow: 0xe2b33a };
+    var HAIRC = { black: 0x1b1b1b, brown: 0x5a3a22, dark: 0x2b1d14, ginger: 0x9a4a22, blonde: 0xd9b36a, grey: 0xa0a4a8 };
+    var HAIRS = ["short", "long", "bun", "spiky", "cap", "sprout", "bald"];
+    var ACCS = ["none", "glasses", "beard", "scarf", "bag"];
+    function kindColor(v) {
+      if (v.kind === "investment") return 0x1f8a8a;
+      if (v.kind === "owed") return 0x3a68ab;
+      if (v.kind === "debt") return 0xb3372c;
+      if (v.kind === "personal") return 0x7a5aa6;
+      return 0x5a6bc4;
+    }
+    function lookOf(v) {
+      var h = hash(v.id || "x"), L = v.look || {};
+      var hk = Object.keys(HAIRC);
+      return {
+        outfit: OUTFITS[L.outfit] || kindColor(v),
+        hair: HAIRS.indexOf(L.hair) >= 0 ? L.hair : HAIRS[h % 5],
+        hairc: HAIRC[L.hairc] || HAIRC[hk[(h >> 3) % hk.length]],
+        acc: ACCS.indexOf(L.acc) >= 0 ? L.acc : ["none", "glasses", "none", "scarf", "beard", "bag"][(h >> 6) % 6],
+        skin: SKINS3[(h >> 2) % SKINS3.length],
+        pants: [0x2d3b36, 0x3b3a55, 0x4a3b2d, 0x2b3445][(h >> 9) % 4],
+        wide: 0.92 + ((h >> 11) % 5) * 0.04
+      };
+    }
+    function makeWorker(v) {
+      var lk = lookOf(v);
+      var g = new THREE.Group();
+      var body = new THREE.Group(); g.add(body);
+      var legL = pivot(body, -0.2, 0.6), legR = pivot(body, 0.2, 0.6);
+      box(0.24, 0.6, 0.26, lk.pants, 0, -0.3, 0, legL);
+      box(0.24, 0.6, 0.26, lk.pants, 0, -0.3, 0, legR);
+      box(0.78 * lk.wide, 0.85, 0.48, lk.outfit, 0, 1.02, 0, body);
+      var cn = cyl(0.1, 0.1, 0.04, 0xe2b33a, 0, 1.05, 0.25, body, 10); cn.rotation.x = Math.PI / 2;
+      var head = pivot(body, 0, 1.72);
+      ball(0.32, lk.skin, 0, 0, 0, head);
+      ball(0.04, 0x1b1b1b, -0.11, 0.04, 0.29, head);
+      ball(0.04, 0x1b1b1b, 0.11, 0.04, 0.29, head);
+      var hs = lk.hair, hairBase = function () { var s = ball(0.345, lk.hairc, 0, 0.07, -0.03, head); s.scale.set(1, 0.78, 1); return s; };
+      if (hs === "short") { hairBase(); }
+      else if (hs === "long") { hairBase(); box(0.72, 0.8, 0.14, lk.hairc, 0, -0.18, -0.26, head); }
+      else if (hs === "bun") { hairBase(); ball(0.15, lk.hairc, 0, 0.4, -0.06, head); }
+      else if (hs === "spiky") { hairBase(); for (var i = -2; i <= 2; i++) { var sp = cone(0.08, 0.3, lk.hairc, i * 0.13, 0.36, 0, head, 5); sp.rotation.z = -i * 0.18; } }
+      else if (hs === "cap") { var cp = ball(0.35, lk.outfit, 0, 0.08, 0, head); cp.scale.y = 0.62; box(0.4, 0.05, 0.3, lk.outfit, 0, 0.02, 0.3, head); }
+      else if (hs === "sprout") {
+        var l1 = cone(0.16, 0.5, 0x3da35d, -0.14, 0.4, 0, head, 6); l1.rotation.z = 0.5;
+        var l2 = cone(0.16, 0.5, 0x3da35d, 0.14, 0.4, 0, head, 6); l2.rotation.z = -0.5;
+      }
+      if (lk.acc === "glasses") {
+        box(0.17, 0.12, 0.04, 0x1b1b1b, -0.12, 0.05, 0.31, head);
+        box(0.17, 0.12, 0.04, 0x1b1b1b, 0.12, 0.05, 0.31, head);
+        box(0.1, 0.03, 0.04, 0x1b1b1b, 0, 0.06, 0.31, head);
+      } else if (lk.acc === "beard") { box(0.4, 0.2, 0.1, lk.hairc, 0, -0.2, 0.22, head); }
+      else if (lk.acc === "scarf") { box(0.9 * lk.wide, 0.18, 0.56, 0xd96a3a, 0, 1.48, 0, body); }
+      else if (lk.acc === "bag") { box(0.52, 0.62, 0.22, 0x8a5a3a, 0, 1.05, -0.36, body); }
+      var armL = pivot(body, -0.5 * lk.wide, 1.36), armR = pivot(body, 0.5 * lk.wide, 1.36);
+      box(0.18, 0.62, 0.18, lk.skin, 0, -0.28, 0, armL);
+      box(0.18, 0.62, 0.18, lk.skin, 0, -0.28, 0, armR);
+      var tool = new THREE.Group(); armR.add(tool);
+      box(0.07, 1.0, 0.07, 0x8a5a3a, 0, -0.75, 0, tool);
+      box(0.3, 0.06, 0.22, 0x8c9a94, 0, -1.25, 0.08, tool);
+      world.add(g);
+      return { g: g, body: body, legL: legL, legR: legR, armL: armL, armR: armR, head: head, tool: tool };
+    }
+    function makeMark() {
+      var m = {};
+      m.ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.3, 40), new THREE.MeshBasicMaterial({ color: 0xe2b33a, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+      m.ring.rotation.x = -Math.PI / 2;
+      m.arrow = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.85, 4), new THREE.MeshBasicMaterial({ color: 0xe2b33a }));
+      m.arrow.rotation.x = Math.PI;
+      m.beam = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 14, 18, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd35a, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+      world.add(m.ring); world.add(m.arrow); world.add(m.beam);
+      m.ring.visible = false; m.arrow.visible = false; m.beam.visible = false;
+      return m;
+    }
+
+    var steward = makeWorker({ id: "__steward", kind: "owed", look: { outfit: "yellow", hair: "bald", acc: "glasses" } });
+    steward.g.position.set(5.2, 0, 5.4);
+    steward.g.userData.id = "__steward";
+    steward.body.scale.setScalar(1.55);
+    steward.tool.visible = false;
+    var hasClaude = !!(window.claude && window.claude.use);
+    steward.g.visible = hasClaude;
+    var stewardSign = makeSign();
+    stewardSign.spr.scale.set(8, 1.9, 1);
+    stewardSign.spr.position.set(5.2, 5.6, 5.4);
+    drawSign(stewardSign, "The Steward", "Tap to ask");
+    stewardSign.spr.visible = hasClaude;
+
+    function rectOf(zone) {
+      var z = ZONES[zone];
+      return { x0: z.cx - z.w / 2 + 3, x1: z.cx + z.w / 2 - 3, z0: z.cz + z.wz0, z1: z.cz + z.wz1 };
+    }
+    function pick(zone) {
+      var r = rectOf(zone);
+      var zz = r.z0 + Math.random() * (r.z1 - r.z0);
+      if (zone === "fields" && Math.random() < 0.6) zz = r.z0 + Math.random() * 2.4;
+      return { x: r.x0 + Math.random() * (r.x1 - r.x0), z: zz };
+    }
+    function zoneOf(v) {
+      if (v.kind === "debt" || v.kind === "personal") return "count";
+      if (v.status === "working") return "fields";
+      if (v.status === "held") return "square";
+      if (v.status === "transit") return "harbor";
+      if (v.status === "stock") return "stall";
+      return "home";
+    }
+    function usd(v) { var n = num(v.amount); return v.currency === "LBP" ? n / 89500 : n; }
+    function isLate(v) { return !!(v.due && v.status !== "done" && v.due < new Date().toISOString().slice(0, 10)); }
+
+    var focus = "overview", following = null;
+    var ents = {};
+    var info = document.createElement("div");
+    info.className = "tinfo"; info.hidden = true;
+    host.appendChild(info);
+
+    function makeEnt(v) {
+      var el = document.createElement("button");
+      el.type = "button";
+      el.className = "tlabel";
+      var nm = document.createElement("b"); var am = document.createElement("span");
+      el.appendChild(nm); el.appendChild(am);
+      el.addEventListener("click", function () { followEnt(v.id); });
+      host.appendChild(el);
+      return { id: v.id, v: v, rig: null, sig: "", mark: makeMark(), rank: 0, late: false, el: el, nm: nm, am: am, zone: null, seated: false, sitting: false, seat: null, wait: 0, mode: "idle", face: 0, ph: Math.random() * 6, speed: 0.9 + (hash(v.id || "x") % 5) * 0.12, tx: 0, tz: 0 };
+    }
+    function spawn(e) {
+      var p = pick(e.zone);
+      e.rig.g.position.set(p.x, 0, p.z);
+      var q = pick(e.zone);
+      e.tx = q.x; e.tz = q.z;
+      e.wait = Math.random() * 2;
+    }
+
+    var KIND = { investment: "Invested", owed: "Owed to me", loan: "Lent", debt: "I owe", personal: "Personal" };
+    function zoneItems(k) { return state.items.filter(function (v) { return zoneOf(v) === k; }); }
+    function zoneTotal(k) {
+      var list = zoneItems(k).filter(function (v) { return k === "count" ? v.status !== "done" : true; });
+      return plain(sumBy(list, function () { return true; }, function (v) { return num(v.amount); }));
+    }
+    function bitsOf(v) {
+      var bits = [];
+      if (num(v.expectedProfit)) bits.push("Expected profit " + money(num(v.expectedProfit), v.currency));
+      if (num(v.profitReceived)) bits.push("Profit received " + money(num(v.profitReceived), v.currency));
+      if (num(v.profitHeld)) bits.push("Profit held up " + money(num(v.profitHeld), v.currency));
+      if (num(v.recovered)) bits.push("Already recovered " + money(num(v.recovered), v.currency));
+      if (num(v.shipping)) bits.push("Shipping to pay " + money(num(v.shipping), v.currency));
+      return bits;
+    }
+    function metaOf(v) {
+      var meta = [KIND[v.kind] || "Item"];
+      if (v.where) meta.push(esc(v.where));
+      if (v.due) meta.push((isLate(v) ? '<span class="late">Overdue: ' : "<span>Due: ") + esc(fmtDate(v.due)) + "</span>");
+      return meta.join(" · ");
+    }
+    function chipsOf(v) {
+      var bits = bitsOf(v);
+      return bits.length ? '<div class="zi-bits">' + bits.map(function (b) { return "<span>" + esc(b) + "</span>"; }).join("") + "</div>" : "";
+    }
+    function itemHtml(v) {
+      return '<div class="zitem"><div class="zi-top"><b>' + esc(v.name) + '</b><span class="zi-amt">' + money(num(v.amount), v.currency) + "</span></div>" +
+        '<div class="zi-meta">' + metaOf(v) + "</div>" + chipsOf(v) +
+        (v.note ? '<div class="zi-note">' + esc(v.note) + "</div>" : "") +
+        '<div class="zi-act"><button type="button" class="btn" data-find="' + esc(v.id) + '">Find in town</button><button type="button" class="btn" data-edit="' + esc(v.id) + '">Edit</button></div></div>';
+    }
+    function renderUrgent() {
+      var open = state.items.filter(function (v) { return v.status !== "done" && v.kind !== "debt" && v.kind !== "personal"; })
+        .sort(function (a, b) { return usd(b) - usd(a); });
+      var top = open.slice(0, 5);
+      var late = state.items.filter(isLate);
+      var html = "";
+      if (top.length) {
+        html += '<div class="u-row"><span class="u-title">Most money out</span>' + top.map(function (v, i) {
+          return '<button type="button" class="chip rank' + (i + 1) + '" data-find="' + esc(v.id) + '"><b>#' + (i + 1) + "</b> " + esc(v.name) + " <span>" + money(num(v.amount), v.currency) + "</span></button>";
+        }).join("") + "</div>";
+      }
+      if (late.length) {
+        html += '<div class="u-row"><span class="u-title late">Overdue</span>' + late.map(function (v) {
+          return '<button type="button" class="chip latechip-l" data-find="' + esc(v.id) + '">' + esc(v.name) + " <span>" + money(num(v.amount), v.currency) + "</span></button>";
+        }).join("") + "</div>";
+      }
+      urgent.innerHTML = html;
+    }
+    function renderPanel() {
+      if (focus === "overview") {
+        panel.innerHTML = '<div class="zsum">' + ZORDER.map(function (k) {
+          var n = zoneItems(k).filter(function (v) { return k === "count" ? v.status !== "done" : true; }).length;
+          return '<button type="button" class="zcard" data-zone="' + k + '"><span class="zc-name">' + esc(ZONES[k].name) + '</span><span class="zc-amt">' + esc(zoneTotal(k)) +
+            '</span><span class="zc-n">' + n + (n === 1 ? " villager" : " villagers") + '</span><span class="zc-b">' + esc(ZONES[k].blurb) + "</span></button>";
+        }).join("") + "</div>";
+      } else {
+        var list = zoneItems(focus).sort(function (a, b) { return usd(b) - usd(a); });
+        panel.innerHTML = '<div class="zhead"><button type="button" class="btn" data-zone="overview">&larr; Overview</button><div><h2>' + esc(ZONES[focus].name) + '</h2><div class="zc-b">' + esc(ZONES[focus].blurb) + " Total: " + esc(zoneTotal(focus)) + "</div></div></div>" +
+          (list.length ? '<div class="zlist">' + list.map(itemHtml).join("") + "</div>" : '<p class="zc-b">Nobody here right now.</p>');
+      }
+    }
+    function openItem(id) { return state.items.filter(function (x) { return x.id === id; })[0]; }
+    function onAct(ev) {
+      var z = ev.target.closest("[data-zone]");
+      if (z) { setFocus(z.getAttribute("data-zone")); return; }
+      var f = ev.target.closest("[data-find]");
+      if (f) { followEnt(f.getAttribute("data-find")); host.scrollIntoView({ block: "nearest", behavior: "smooth" }); return; }
+      var ed = ev.target.closest("[data-edit]");
+      if (ed) { var it = openItem(ed.getAttribute("data-edit")); if (it) openSheet(it); }
+    }
+    panel.addEventListener("click", onAct);
+    urgent.addEventListener("click", onAct);
+
+    function showInfo(v) {
+      var rk = ents[v.id] ? ents[v.id].rank : 0;
+      info.innerHTML = '<div class="ti-top"><b>' + (rk ? "#" + rk + " " : "") + esc(v.name) + '</b><span>' + money(num(v.amount), v.currency) + "</span></div>" +
+        '<div class="zi-meta">' + metaOf(v) + "</div>" + chipsOf(v) +
+        (v.note ? '<div class="zi-note">' + esc(v.note) + "</div>" : "") +
+        '<div class="zi-act"><button type="button" class="btn" data-ti="edit">Edit</button><button type="button" class="btn" data-ti="close">Back</button></div>';
+      info.hidden = false;
+    }
+    info.addEventListener("click", function (ev) {
+      var b = ev.target.closest("[data-ti]");
+      if (!b) return;
+      if (b.getAttribute("data-ti") === "edit" && following) { var it = openItem(following); if (it) openSheet(it); }
+      else setFocus(focus);
+    });
+
+    var datalist = document.createElement("datalist");
+    datalist.id = "tnames";
+    var search = document.createElement("input");
+    search.type = "search"; search.id = "tsearch"; search.placeholder = "Find a villager…";
+    search.setAttribute("list", "tnames"); search.setAttribute("aria-label", "Find a villager by name");
+    search.addEventListener("change", function () {
+      var q = search.value.trim().toLowerCase();
+      if (!q) return;
+      var hit = Object.keys(ents).filter(function (id) { return ents[id].v.name.toLowerCase() === q; })[0] ||
+        Object.keys(ents).filter(function (id) { return ents[id].v.name.toLowerCase().indexOf(q) >= 0; })[0];
+      if (hit) { followEnt(hit); search.value = ""; }
+    });
+    var NAV = [["overview", "Overview"], ["fields", "The Fields"], ["square", "Waiting Bench"], ["home", "Home"], ["count", "Money You Owe"], ["harbor", "The Harbor"], ["stall", "Market Stall"]];
+    NAV.forEach(function (n) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "btn"; b.textContent = n[1]; b.setAttribute("data-nav", n[0]);
+      b.addEventListener("click", function () { setFocus(n[0]); });
+      nav.appendChild(b);
+    });
+    var sb = document.createElement("button");
+    sb.type = "button"; sb.className = "btn"; sb.textContent = "Ask the Steward";
+    sb.addEventListener("click", openSteward);
+    if (hasClaude) nav.appendChild(sb);
+    nav.appendChild(search); nav.appendChild(datalist);
+
+    var VIEWS = {
+      overview: { tx: 0, tz: 16, dist: 122, theta: 0.45, phi: 0.95 },
+      fields: { tx: -19, tz: -9, dist: 38, theta: 0.3, phi: 0.95 },
+      square: { tx: 19, tz: -9, dist: 38, theta: -0.3, phi: 0.95 },
+      home: { tx: -19, tz: 18, dist: 38, theta: 0.3, phi: 0.95 },
+      count: { tx: 19, tz: 18, dist: 38, theta: -0.3, phi: 0.95 },
+      harbor: { tx: -19, tz: 47, dist: 38, theta: 0.3, phi: 0.95 },
+      stall: { tx: 19, tz: 47, dist: 38, theta: -0.3, phi: 0.95 }
+    };
+    function copyView(v) { return { tx: v.tx, tz: v.tz, dist: v.dist, theta: v.theta, phi: v.phi }; }
+    var cur = copyView(VIEWS.overview), goal = copyView(VIEWS.overview);
+    function markNav() {
+      Array.prototype.forEach.call(nav.children, function (b) {
+        if (b.getAttribute && b.getAttribute("data-nav")) b.classList.toggle("active", !following && b.getAttribute("data-nav") === focus);
+      });
+    }
+    function setFocus(name) {
+      focus = VIEWS[name] ? name : "overview";
+      following = null;
+      info.hidden = true;
+      goal = copyView(VIEWS[focus]);
+      markNav();
+      renderPanel();
+    }
+    function followEnt(id) {
+      var e = ents[id];
+      if (!e) return;
+      following = id;
+      focus = e.zone;
+      goal.dist = 12; goal.phi = 0.85; goal.theta = 0.3;
+      markNav();
+      showInfo(e.v);
+      renderPanel();
+    }
+
+    function scaleFor(v, maxUsd) { return 1.1 + 0.42 * Math.sqrt(Math.max(0, usd(v)) / maxUsd); }
+    townSync = function (items) {
+      var seen = {};
+      var maxUsd = 1;
+      items.forEach(function (v) { if (v.kind !== "debt" && v.kind !== "personal") maxUsd = Math.max(maxUsd, usd(v)); });
+      var open = items.filter(function (v) { return v.status !== "done" && v.kind !== "debt" && v.kind !== "personal"; }).sort(function (a, b) { return usd(b) - usd(a); });
+      var rankOf = {};
+      open.slice(0, 3).forEach(function (v, i) { rankOf[v.id] = i + 1; });
+      items.forEach(function (v) {
+        seen[v.id] = true;
+        var e = ents[v.id];
+        if (!e) { e = ents[v.id] = makeEnt(v); }
+        e.v = v;
+        var sig = v.kind + "|" + JSON.stringify(v.look || {});
+        if (e.sig !== sig) {
+          var had = e.rig ? { x: e.rig.g.position.x, z: e.rig.g.position.z } : null;
+          if (e.rig) world.remove(e.rig.g);
+          e.rig = makeWorker(v);
+          e.sig = sig;
+          if (had) e.rig.g.position.set(had.x, 0, had.z); else e.zone = null;
+        }
+        var z = zoneOf(v);
+        if (e.zone !== z) { e.zone = z; e.seated = false; e.sitting = false; spawn(e); }
+        e.rig.tool.visible = z === "fields";
+        e.rig.body.scale.setScalar(scaleFor(v, maxUsd));
+        e.scale = scaleFor(v, maxUsd);
+        e.rank = rankOf[v.id] || 0;
+        e.late = isLate(v);
+        e.nm.textContent = (e.rank ? "★ " : "") + v.name;
+        e.am.textContent = money(num(v.amount), v.currency);
+        e.el.className = "tlabel" + (e.rank ? " rank" + e.rank : "") + (e.late ? " late" : "");
+      });
+      Object.keys(ents).forEach(function (id) {
+        if (!seen[id]) {
+          var e = ents[id];
+          world.remove(e.rig.g);
+          world.remove(e.mark.ring); world.remove(e.mark.arrow); world.remove(e.mark.beam);
+          if (e.el.parentNode) e.el.parentNode.removeChild(e.el);
+          if (following === id) { following = null; info.hidden = true; }
+          delete ents[id];
+        }
+      });
+      var sq = Object.keys(ents).filter(function (id) { return ents[id].zone === "square"; }).sort();
+      sq.forEach(function (id, i) {
+        var e = ents[id];
+        if (i < SEATS.length) {
+          if (!e.seat || e.seat !== SEATS[i]) { e.sitting = false; }
+          e.seated = true; e.seat = SEATS[i];
+        } else { e.seated = false; }
+      });
+      ZORDER.forEach(function (k) { drawSign(signs[k], ZONES[k].name, zoneTotal(k)); });
+      datalist.innerHTML = "";
+      Object.keys(ents).forEach(function (id) {
+        var o = document.createElement("option"); o.value = ents[id].v.name; datalist.appendChild(o);
+      });
+      if (following && ents[following]) showInfo(ents[following].v);
+      renderUrgent();
+      renderPanel();
+    };
+
+    function turn(g, target, k) {
+      var d = target - g.rotation.y;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      g.rotation.y += d * Math.min(1, k);
+    }
+    function resetPose(r) {
+      r.legL.rotation.x = 0; r.legR.rotation.x = 0; r.armL.rotation.x = 0; r.armR.rotation.x = 0;
+      r.armL.rotation.z = 0; r.armR.rotation.z = 0; r.head.rotation.z = 0; r.g.position.y = 0;
+    }
+    function stepEnt(e, dt, t) {
+      var r = e.rig, g = r.g;
+      resetPose(r);
+      if (e.sitting && e.seated) {
+        g.position.x = e.seat.x; g.position.z = e.seat.z;
+        g.rotation.y = 0;
+        g.position.y = 0.02;
+        r.body.rotation.x = 0;
+        r.legL.rotation.x = -1.45; r.legR.rotation.x = -1.45;
+        r.head.rotation.z = Math.sin(t * 1.2 + e.ph) * 0.1;
+        return;
+      }
+      e.sitting = false;
+      if (e.seated && e.seat) { e.tx = e.seat.x; e.tz = e.seat.z; }
+      if (still) { turn(g, 0, 1); return; }
+      if (e.wait > 0) {
+        e.wait -= dt;
+        turn(g, e.face, dt * 6);
+        if (e.mode === "work") { r.armR.rotation.x = -1.0 + Math.sin(t * 5 + e.ph) * 0.8; r.body.rotation.x = 0.12; }
+        else if (e.mode === "wave") { r.armR.rotation.z = 2.4 + Math.sin(t * 7 + e.ph) * 0.4; r.body.rotation.x = 0; }
+        else { r.head.rotation.z = Math.sin(t * 1.6 + e.ph) * 0.1; r.body.rotation.x = 0; }
+        return;
+      }
+      r.body.rotation.x = 0;
+      var dx = e.tx - g.position.x, dz = e.tz - g.position.z;
+      var d = Math.sqrt(dx * dx + dz * dz);
+      if (d < 0.15) {
+        if (e.seated) { e.sitting = true; return; }
+        if (e.zone === "fields") { e.mode = Math.random() < 0.75 ? "work" : "idle"; e.face = Math.PI; }
+        else { e.mode = Math.random() < 0.4 ? "wave" : "idle"; e.face = 0; }
+        e.wait = 1.5 + Math.random() * 3.5;
+        var q = pick(e.zone);
+        e.tx = q.x; e.tz = q.z;
+        return;
+      }
+      var sp = e.speed * (e.zone === "count" ? 0.7 : 1);
+      var st = Math.min(d, sp * dt);
+      g.position.x += dx / d * st;
+      g.position.z += dz / d * st;
+      turn(g, Math.atan2(dx, dz), dt * 8);
+      var ph = t * 7 * sp + e.ph;
+      r.legL.rotation.x = Math.sin(ph) * 0.7;
+      r.legR.rotation.x = -Math.sin(ph) * 0.7;
+      r.armL.rotation.x = -Math.sin(ph) * 0.5;
+      r.armR.rotation.x = Math.sin(ph) * 0.5;
+      g.position.y = Math.abs(Math.sin(ph)) * 0.06;
+    }
+    function updateMark(e, t) {
+      var m = e.mark, p = e.rig.g.position;
+      var on = !!(e.rank || e.late);
+      m.ring.visible = on; m.arrow.visible = on; m.beam.visible = e.rank === 1;
+      if (!on) return;
+      var col = e.late ? 0xe5493a : (e.rank === 1 ? 0xffc928 : 0xe2b33a);
+      m.ring.material.color.setHex(col); m.arrow.material.color.setHex(col);
+      var pulse = 1 + 0.12 * Math.sin(t * 4 + e.ph);
+      var s = (e.scale || 1.2) * (e.rank === 1 ? 1.25 : 1) * pulse;
+      m.ring.position.set(p.x, 0.32, p.z); m.ring.scale.set(s, s, s);
+      m.arrow.position.set(p.x, 2.4 * (e.scale || 1.2) + 0.9 + 0.25 * Math.sin(t * 3 + e.ph), p.z);
+      m.arrow.rotation.y = t * 2;
+      m.beam.position.set(p.x, 7.2, p.z);
+    }
+
+    function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+    function placeCam() {
+      var d = cur.dist * Math.max(1, 1.5 / camera.aspect);
+      var cp = Math.cos(cur.phi);
+      camera.position.set(cur.tx + d * Math.sin(cur.theta) * cp, d * Math.sin(cur.phi), cur.tz + d * Math.cos(cur.theta) * cp);
+      camera.lookAt(cur.tx, 0.9, cur.tz);
+    }
+
+    var ray = new THREE.Raycaster();
+    var ndc = new THREE.Vector2();
+    function pickAt(cx, cy) {
+      var rc = host.getBoundingClientRect();
+      ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      var groups = Object.keys(ents).map(function (id) { ents[id].rig.g.userData.id = id; return ents[id].rig.g; });
+      groups.push(steward.g);
+      var hits = ray.intersectObjects(groups, true);
+      if (!hits.length) return;
+      var o = hits[0].object;
+      while (o && !(o.userData && o.userData.id)) o = o.parent;
+      if (o && o.userData.id === "__steward") { openSteward(); return; }
+      if (o && o.userData.id) followEnt(o.userData.id);
+    }
+
+    var ptrs = {}, pinch = null;
+    function ignoreTarget(t) { return t.closest(".tlabel") || t.closest(".tcontrols") || t.closest(".tinfo"); }
+    host.addEventListener("pointerdown", function (ev) {
+      if (ignoreTarget(ev.target)) return;
+      ptrs[ev.pointerId] = { x: ev.clientX, y: ev.clientY, sx: ev.clientX, sy: ev.clientY, moved: 0 };
+      try { host.setPointerCapture(ev.pointerId); } catch (err) { /* ignore */ }
+      var ids = Object.keys(ptrs);
+      if (ids.length === 2) {
+        var a = ptrs[ids[0]], b = ptrs[ids[1]];
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, dist: goal.dist };
+      }
+    });
+    host.addEventListener("pointermove", function (ev) {
+      var p = ptrs[ev.pointerId];
+      if (!p) return;
+      var ids = Object.keys(ptrs);
+      p.moved = Math.max(p.moved, Math.hypot(ev.clientX - p.sx, ev.clientY - p.sy));
+      if (ids.length === 1) {
+        goal.theta -= (ev.clientX - p.x) * 0.007;
+        goal.phi = clamp(goal.phi + (ev.clientY - p.y) * 0.005, 0.3, 1.4);
+        p.x = ev.clientX; p.y = ev.clientY;
+      } else {
+        p.x = ev.clientX; p.y = ev.clientY;
+        if (pinch) {
+          var a = ptrs[ids[0]], b = ptrs[ids[1]];
+          var nd = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+          goal.dist = clamp(pinch.dist * pinch.d / nd, 8, 140);
+        }
+      }
+    });
+    host.addEventListener("pointerup", function (ev) {
+      var p = ptrs[ev.pointerId];
+      var single = Object.keys(ptrs).length === 1;
+      delete ptrs[ev.pointerId]; pinch = null;
+      if (p && single && p.moved < 6) pickAt(ev.clientX, ev.clientY);
+    });
+    host.addEventListener("pointercancel", function (ev) { delete ptrs[ev.pointerId]; pinch = null; });
+    host.addEventListener("wheel", function (ev) {
+      ev.preventDefault();
+      goal.dist = clamp(goal.dist * Math.exp(ev.deltaY * 0.001), 8, 140);
+    }, { passive: false });
+    host.addEventListener("keydown", function (ev) {
+      var k = ev.key, used = true;
+      if (k === "ArrowLeft") goal.theta -= 0.15;
+      else if (k === "ArrowRight") goal.theta += 0.15;
+      else if (k === "ArrowUp") goal.phi = clamp(goal.phi - 0.08, 0.3, 1.4);
+      else if (k === "ArrowDown") goal.phi = clamp(goal.phi + 0.08, 0.3, 1.4);
+      else if (k === "+" || k === "=") goal.dist = clamp(goal.dist / 1.2, 8, 140);
+      else if (k === "-") goal.dist = clamp(goal.dist * 1.2, 8, 140);
+      else if (k === "Escape" || k === "0") setFocus("overview");
+      else if (k >= "1" && k <= "6") setFocus(ZORDER[Number(k) - 1]);
+      else used = false;
+      if (used) ev.preventDefault();
+    });
+    document.getElementById("zin").addEventListener("click", function () { goal.dist = clamp(goal.dist / 1.25, 8, 140); });
+    document.getElementById("zout").addEventListener("click", function () { goal.dist = clamp(goal.dist * 1.25, 8, 140); });
+    document.getElementById("zreset").addEventListener("click", function () { if (following) { goal.dist = 12; goal.phi = 0.85; goal.theta = 0.3; } else { goal = copyView(VIEWS[focus]); } });
+
+    var lw = 0, lh = 0, last = performance.now(), tt = 0;
+    var vec = new THREE.Vector3();
+    function project(x, y, z, el, w, h) {
+      vec.set(x, y, z).project(camera);
+      if (vec.z > 1) { el.style.display = "none"; return; }
+      el.style.display = "";
+      var px = (vec.x * 0.5 + 0.5) * w, py = (-vec.y * 0.5 + 0.5) * h;
+      el.style.transform = "translate(" + px.toFixed(1) + "px," + py.toFixed(1) + "px) translate(-50%,-100%)";
+      el.style.zIndex = String(Math.round(1000 - vec.z * 500));
+    }
+    var failed = false;
+    function frame(now) {
+      if (failed) return;
+      requestAnimationFrame(frame);
+      try { drawFrame(now); } catch (err) { failed = true; townFail(); }
+    }
+    function drawFrame(now) {
+      if (document.hidden || !document.body.classList.contains("view-town")) { last = now; return; }
+      var dt = Math.min(0.05, (now - last) / 1000); last = now; tt += dt;
+      var w = host.clientWidth, h = host.clientHeight;
+      if (w && h && (w !== lw || h !== lh)) {
+        lw = w; lh = h;
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+      if (following && ents[following]) {
+        var fp = ents[following].rig.g.position;
+        goal.tx = fp.x; goal.tz = fp.z;
+      }
+      var k = Math.min(1, dt * 5);
+      cur.tx += (goal.tx - cur.tx) * k; cur.tz += (goal.tz - cur.tz) * k;
+      cur.dist += (goal.dist - cur.dist) * k; cur.theta += (goal.theta - cur.theta) * k; cur.phi += (goal.phi - cur.phi) * k;
+      placeCam();
+      camera.updateMatrixWorld();
+      Object.keys(ents).forEach(function (id) { stepEnt(ents[id], dt, tt); updateMark(ents[id], tt); });
+      resetPose(steward);
+      steward.g.rotation.y = 0.5 + Math.sin(tt * 0.5) * 0.35;
+      steward.armR.rotation.z = 2.4 + Math.sin(tt * 3) * 0.4;
+      steward.g.position.y = Math.abs(Math.sin(tt * 2)) * 0.05;
+      if (!still) {
+        crops.forEach(function (c) { c.m.scale.y = 1 + Math.sin(tt * 1.5 + c.ph) * 0.1; });
+        if (windmill) windmill.rotation.z -= dt * 0.9;
+        if (coinStat) coinStat.rotation.y += dt * 0.9;
+        boats.forEach(function (b) { b.g.position.y = 0.5 + Math.sin(tt * 1.3 + b.ph) * 0.1; b.g.rotation.z = Math.sin(tt * 1.1 + b.ph) * 0.05; });
+        spray.forEach(function (d) {
+          var u = (tt * 0.7 + d.ph) % 1;
+          var rad = 0.2 + u * 1.5;
+          d.m.position.set(Math.cos(d.ang) * rad, 1.1 + Math.sin(u * Math.PI) * 1.9, Math.sin(d.ang) * rad);
+        });
+        clouds.forEach(function (c) { c.position.x += dt * 0.7; if (c.position.x > 110) c.position.x = -110; });
+      }
+      renderer.render(scene, camera);
+      Object.keys(ents).forEach(function (id) {
+        var e = ents[id], p = e.rig.g.position;
+        var show = e.rank || e.late || id === following || (focus !== "overview" && e.zone === focus);
+        if (!show) { e.el.style.display = "none"; return; }
+        project(p.x, p.y + 2.5 * (e.scale || 1.2) + (e.rank || e.late ? 1.9 : 0.7), p.z, e.el, lw, lh);
+      });
+    }
+    requestAnimationFrame(frame);
+
+    setFocus("overview");
+    document.body.classList.add("view-town");
+    viewBtn.hidden = false;
+    viewBtn.addEventListener("click", function () {
+      var on = document.body.classList.toggle("view-town");
+      viewBtn.textContent = on ? "List view" : "Town view";
+    });
+  }
+  initTown();
+
+  render();
+  (async function () {
+    var db = null;
+    try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch (e) { db = null; }
+    if (!db) { useLocal(); return; }
+    var col = db.collection("villagers");
+    store = {
+      newId: function () { return col.doc().id; },
+      save: function (o) { return col.doc(o.id).set(o); },
+      remove: function (id) { return col.doc(id).delete(); }
+    };
+    var timer = setTimeout(function () { if (!state.loaded) { state.slow = true; render(); } }, 10000);
+    col.onSnapshot(function (snap) {
+      state.items = snap.docs.map(function (d) { var o = d.data() || {}; o.id = d.id; return o; });
+      if (!snap.metadata.fromCache || snap.docs.length) { state.loaded = true; clearTimeout(timer); }
+      state.slow = false; state.error = null;
+      render();
+    }, function (err) {
+      state.loaded = true; state.error = err && err.code ? err.code : "unavailable";
+      clearTimeout(timer); render();
+    });
+  })();
+})();
+</script>
+
+</body></html>
