@@ -144,6 +144,12 @@ header p { margin: 4px 0 0; color: var(--muted); max-width: 52ch; }
 .s-title { font-family: var(--font-display); font-weight: 600; font-size: 18px; }
 .s-sub { color: var(--muted); font-size: 13.5px; }
 .s-body { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; }
+.s-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.s-tab { font: inherit; font-size: 13.5px; font-weight: 600; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+.s-tab.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.s-tab:disabled, .chip:disabled { opacity: 0.55; cursor: default; }
+.chip.council { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.slabel { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
 .s-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .s-log { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; }
 .smsg { padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14.5px; max-width: 92%; }
@@ -234,6 +240,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     <div class="hbtns">
       <button class="btn" id="exp-btn" type="button" hidden>Export data</button>
       <button class="btn" id="imp-btn" type="button" hidden>Import data</button>
+      <button class="btn" id="bak-btn" type="button" hidden>Copy backup</button>
       <input id="imp-file" type="file" accept="application/json,.json" hidden>
       <button class="btn" id="view-btn" type="button" hidden>List view</button>
       <button class="btn primary" id="add-btn" type="button">Add a villager</button>
@@ -245,8 +252,9 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
   <section class="tiles" id="tiles" aria-label="Totals"></section>
 
   <details class="steward" id="steward">
-    <summary><span class="s-title">The Steward</span><span class="s-sub">Ask about your money. It only reads your entries and never changes them.</span></summary>
+    <summary><span class="s-title">The Agent Guild</span><span class="s-sub" id="s-role">Ask about your money. The agents only read your entries and never change them.</span></summary>
     <div class="s-body">
+      <div class="s-tabs" id="s-tabs" role="group" aria-label="Choose an agent"></div>
       <div class="s-chips" id="s-chips"></div>
       <div class="s-log" id="s-log" aria-live="polite"></div>
       <form class="s-form" id="s-form" autocomplete="off">
@@ -264,6 +272,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         <button class="btn" id="zin" type="button" aria-label="Zoom in">+</button>
         <button class="btn" id="zout" type="button" aria-label="Zoom out">&minus;</button>
         <button class="btn" id="zreset" type="button">Reset view</button>
+        <button class="btn" id="tod" type="button" title="Change the time of day">Time: Auto</button>
       </div>
     </div>
     <p class="town-hint">Drag to turn the view. Pinch or scroll to zoom. Pick a part of the town above to open it up.</p>
@@ -762,14 +771,6 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
   }
 
   /* --- The Steward (read-only assistant) --- */
-  function openSteward() {
-    var d = document.getElementById("steward");
-    if (!d) return;
-    d.open = true;
-    try { d.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (err) { /* ignore */ }
-    var inp = document.getElementById("s-input");
-    if (inp) inp.focus();
-  }
   function stewardFacts() {
     var today = new Date().toISOString().slice(0, 10);
     var all = state.items;
@@ -805,76 +806,189 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       })
     };
   }
-  var sHist = [], sBusy = false;
-  function sAdd(role, text) {
+  var AGENTS = [
+    { id: "steward", name: "The Steward", role: "Your all-round money assistant",
+      persona: "You are the Steward of Money Village, a careful all-round assistant for one small card seller in Lebanon who tracks loans, investments, money owed to him, partner splits and profit.",
+      chips: [
+        ["Brief me", "Give me a short briefing: what is most urgent, what is overdue, and what I should chase first this week."],
+        ["End of December", "If everything comes in as recorded, how much will I have by the end of December? Show the steps using the app's totals and say what could lower it."],
+        ["What is unclear?", "What in my records is missing, unclear or inconsistent? Point out missing due dates, unknown shipping costs and anything that needs a decision."]
+      ] },
+    { id: "collector", name: "The Collector", role: "Chases the money people owe you",
+      persona: "You are the Collector of Money Village. You only care about money other people owe him: who is late, who is due soon, the order to chase them in (biggest and latest first), and short, friendly, polite reminder messages in simple English that he can paste into WhatsApp.",
+      chips: [
+        ["Chase order", "List everyone who owes me money in the order I should chase them today, with one short reason each."],
+        ["Draft reminders", "Draft short, friendly WhatsApp reminders in simple English, one per person, for everyone who owes me money and is overdue or due soon. Do not invent amounts."],
+        ["Overdue only", "Who is overdue right now, by how many days, and how much? If nobody is, say so."]
+      ] },
+    { id: "strategist", name: "The Strategist", role: "Ideas for what to do with the money",
+      persona: "You are the Strategist of Money Village. You look at where his money is working versus stuck, how much is tied up with one person or one product, and you give practical ideas for what to do with money as it comes back (for example: pay down what he owes first, keep a cash buffer, restock fast-selling sealed TCG product). Everything you say is a suggestion, not a fact. Do not predict market prices and never promise results.",
+      chips: [
+        ["Where to reinvest", "Money will come back soon. Give me 3 practical options for what to do with it, in order of how safe they are, and what each depends on."],
+        ["Biggest risks", "What are the biggest risks in my records right now (too much with one person, long waits, unknown costs)? Say what would soften each."],
+        ["Sell first", "Looking at my stock and what is in transit, what should I focus on selling or collecting first and why?"]
+      ] },
+    { id: "auditor", name: "The Auditor", role: "Checks the records and the math",
+      persona: "You are the Auditor of Money Village. You check his records for missing, unclear or inconsistent data: missing due dates, unknown shipping costs, partner splits that look off, entries that might be counted twice, and anything that needs a decision. You also explain how the app's totals were built from the entries.",
+      chips: [
+        ["Check my records", "Check every entry and list what is missing or inconsistent, most important first, naming the villager to fix and what to enter."],
+        ["Double counting?", "Is any money possibly counted twice, for example between the father loan, the shared pot, and the Dahdouli investment? Explain what you can and cannot tell from the data."],
+        ["What needs a decision?", "Which open questions in my records need a decision from me before the numbers can be trusted?"]
+      ] }
+  ];
+  var RULES = "Rules: use ONLY the data below. Every total was computed by the app, so quote those totals exactly and never recompute them differently. Never invent amounts, names or dates; if something is missing, say it is missing. " +
+    "You can only read this data. You cannot change it. If a change is needed, tell him which villager to edit and what to enter. " +
+    "Amounts are USD unless the currency says LBP. Answer in plain text with short lines. No markdown headings or bold. Be direct and practical, and put what to do first at the top.";
+  var sHist = {}, sBusy = false, curAgent = "steward";
+  function agentOf(id) { return AGENTS.filter(function (a) { return a.id === id; })[0] || AGENTS[0]; }
+  function sAdd(role, text, label) {
     var log = document.getElementById("s-log");
     var d = document.createElement("div");
     d.className = "smsg " + role;
-    d.textContent = text;
+    if (label) { var l = document.createElement("span"); l.className = "slabel"; l.textContent = label; d.appendChild(l); }
+    var t = document.createElement("span"); t.className = "stext"; t.textContent = text; d.appendChild(t);
+    d._t = t;
     log.appendChild(d);
     log.scrollTop = log.scrollHeight;
     return d;
   }
-  async function stewardAsk(q) {
+  function sSet(d, text) { d._t.textContent = text; var log = document.getElementById("s-log"); log.scrollTop = log.scrollHeight; }
+  function sBusySet(on) {
+    sBusy = on;
+    var ids = ["s-send"];
+    ids.forEach(function (i) { var b = document.getElementById(i); if (b) b.disabled = on; });
+    Array.prototype.forEach.call(document.querySelectorAll("#s-chips .chip, #s-tabs .s-tab"), function (b) { b.disabled = on; });
+  }
+  async function getSample() {
+    var s = window.claude && window.claude.use ? await window.claude.use("sample") : null;
+    if (!s) throw { code: "unavailable" };
+    return s;
+  }
+  function introFor(a) {
+    var f = stewardFacts();
+    return a.persona + " " + RULES + "\n\nDATA (today is " + f.today + "):\n" + JSON.stringify(f);
+  }
+  function errText(e) {
+    var c = e && e.code;
+    return c === "not_granted" ? "The agents need your permission to use Claude here. Ask again and allow it when asked." :
+      c === "rate_limited" ? "The agents are being asked too often. Try again in a minute." :
+      "The agents aren't available in this view right now.";
+  }
+  async function agentAsk(q) {
     q = String(q || "").trim();
     if (!q || sBusy) return;
-    var btn = document.getElementById("s-send");
+    var a = agentOf(curAgent);
+    var hist = sHist[a.id] || (sHist[a.id] = []);
     sAdd("user", q);
-    var bot = sAdd("bot", "Thinking…");
-    sBusy = true; btn.disabled = true;
+    var bot = sAdd("bot", "Thinking…", a.name);
+    sBusySet(true);
     try {
-      var sample = window.claude && window.claude.use ? await window.claude.use("sample") : null;
-      if (!sample) throw { code: "unavailable" };
-      var intro = "You are the Steward of Money Village, a careful assistant for one small card seller in Lebanon who tracks loans, investments, money owed to him, partner splits and profit. " +
-        "Rules: use ONLY the data below. Every total was computed by the app, so quote those totals exactly and never recompute them differently. Never invent amounts, names or dates; if something is missing, say it is missing. " +
-        "You can only read this data. You cannot change it. If a change is needed, tell him which villager to edit and what to enter. " +
-        "Amounts are USD unless the currency says LBP. Answer in plain text with short lines. No markdown headings or bold. Be direct and practical, and put what to do first at the top.\n\n" +
-        "DATA (today is " + stewardFacts().today + "):\n" + JSON.stringify(stewardFacts());
+      var sample = await getSample();
+      var intro = introFor(a);
       var msgs = [];
-      sHist.slice(-5).forEach(function (h, i) {
+      hist.slice(-5).forEach(function (h, i) {
         msgs.push({ role: "user", content: (i === 0 ? intro + "\n\nQUESTION: " : "") + h.q });
         msgs.push({ role: "assistant", content: h.a });
       });
       msgs.push({ role: "user", content: (msgs.length ? "" : intro + "\n\nQUESTION: ") + q });
-      var res = await sample(msgs, {
-        cache: false,
-        onText: function (x) { bot.textContent = x.text; document.getElementById("s-log").scrollTop = 1e6; }
-      });
-      var out = (res && res.text) || bot.textContent;
-      bot.textContent = out;
-      sHist.push({ q: q, a: out });
+      var res = await sample(msgs, { cache: false, onText: function (x) { sSet(bot, x.text); } });
+      var out = (res && res.text) || bot._t.textContent;
+      sSet(bot, out);
+      hist.push({ q: q, a: out });
     } catch (e) {
-      var c = e && e.code;
-      bot.textContent = c === "not_granted" ? "The Steward needs your permission to use Claude here. Ask again and allow it when asked." :
-        c === "rate_limited" ? "The Steward is being asked too often. Try again in a minute." :
-        "The Steward isn't available in this view right now.";
+      sSet(bot, errText(e));
       bot.className = "smsg bot err";
     }
-    sBusy = false; btn.disabled = false;
+    sBusySet(false);
   }
-  (function stewardUi() {
-    var chips = [
-      ["Brief me", "Give me a short briefing: what is most urgent, what is overdue, and what I should chase first this week."],
-      ["End of December", "If everything comes in as recorded, how much will I have by the end of December? Show the steps using the app's totals and say what could lower it."],
-      ["Draft reminders", "Draft short, friendly WhatsApp reminders in simple English, one per person, for everyone who owes me money and is overdue or due soon. Do not invent amounts."],
-      ["What is unclear?", "What in my records is missing, unclear or inconsistent? Point out missing due dates, unknown shipping costs and anything that needs a decision."]
-    ];
+  async function oneReport(sample, id, question, reports) {
+    var a = agentOf(id);
+    var bot = sAdd("bot", "Thinking…", a.name);
+    try {
+      var res = await sample([{ role: "user", content: introFor(a) + "\n\nQUESTION: " + question }], { cache: false, onText: function (x) { sSet(bot, x.text); } });
+      var out = (res && res.text) || "";
+      sSet(bot, out || "(no report)");
+      if (out) reports[id] = out;
+    } catch (e) { sSet(bot, errText(e)); bot.className = "smsg bot err"; }
+  }
+  async function councilRun() {
+    if (sBusy) return;
+    openSteward();
+    sAdd("user", "Morning Council: every agent reports.");
+    sBusySet(true);
+    var sample;
+    try { sample = await getSample(); } catch (e) { var b = sAdd("bot", errText(e), "The Council"); b.className = "smsg bot err"; sBusySet(false); return; }
+    var reports = {};
+    await oneReport(sample, "collector", "Report in under 120 words: who should I chase today, in order, and why. Plain lines, no drafts.", reports);
+    await Promise.all([
+      oneReport(sample, "strategist", "Report in under 120 words: the 3 most useful moves for my money this week, and the main risk.", reports),
+      oneReport(sample, "auditor", "Report in under 120 words: the 3 most important gaps or inconsistencies in my records, and which villager to fix.", reports)
+    ]);
+    if (Object.keys(reports).length) {
+      var st = agentOf("steward");
+      var bot = sAdd("bot", "Thinking…", "The Steward, summing up");
+      try {
+        var res = await sample([{ role: "user", content: introFor(st) + "\n\nYour three agents reported (JSON):\n" + JSON.stringify(reports) +
+          "\n\nMerge their reports into the 3 most important actions for today, most urgent first. Under 100 words. Do not add facts they did not report." }],
+          { cache: false, onText: function (x) { sSet(bot, x.text); } });
+        sSet(bot, (res && res.text) || "(no summary)");
+      } catch (e) { sSet(bot, errText(e)); bot.className = "smsg bot err"; }
+    }
+    sBusySet(false);
+  }
+  function showAgent(id, announce) {
+    curAgent = agentOf(id).id;
+    var a = agentOf(curAgent);
+    Array.prototype.forEach.call(document.querySelectorAll("#s-tabs .s-tab"), function (b) {
+      var on = b.getAttribute("data-agent") === a.id;
+      b.classList.toggle("active", on); b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
     var box = document.getElementById("s-chips");
-    chips.forEach(function (c) {
+    box.innerHTML = "";
+    a.chips.forEach(function (c) {
       var b = document.createElement("button");
       b.type = "button"; b.className = "chip"; b.textContent = c[0];
-      b.addEventListener("click", function () { stewardAsk(c[1]); });
+      b.addEventListener("click", function () { agentAsk(c[1]); });
       box.appendChild(b);
+    });
+    var cb = document.createElement("button");
+    cb.type = "button"; cb.className = "chip council"; cb.textContent = "Morning Council";
+    cb.addEventListener("click", councilRun);
+    box.appendChild(cb);
+    var inp = document.getElementById("s-input");
+    if (inp) inp.placeholder = "Ask " + a.name + "…";
+    var sub = document.getElementById("s-role");
+    if (sub) sub.textContent = a.role + ". Reads your entries and never changes them.";
+    if (announce) sAdd("bot", "I'm " + a.name.replace("The ", "the ") + ". " + a.role + ". I only read your entries and never change them.", a.name);
+  }
+  function openSteward(id) {
+    var d = document.getElementById("steward");
+    if (!d) return;
+    if (id && typeof id === "string") showAgent(id, curAgent !== id);
+    d.open = true;
+    try { d.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (err) { /* ignore */ }
+    var inp = document.getElementById("s-input");
+    if (inp) inp.focus();
+  }
+  (function agentsUi() {
+    var tabs = document.getElementById("s-tabs");
+    AGENTS.forEach(function (a) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "s-tab"; b.textContent = a.name.replace("The ", "");
+      b.setAttribute("data-agent", a.id);
+      b.addEventListener("click", function () { showAgent(a.id, true); });
+      tabs.appendChild(b);
     });
     document.getElementById("s-form").addEventListener("submit", function (e) {
       e.preventDefault();
       var inp = document.getElementById("s-input");
       var q = inp.value;
       inp.value = "";
-      stewardAsk(q);
+      agentAsk(q);
     });
     if (!(window.claude && window.claude.use)) { document.getElementById("steward").hidden = true; }
-    sAdd("bot", "I'm the Steward. Ask me about what to chase first, what you'll have by December, or who to remind. I can only read your entries and never change them.");
+    showAgent("steward", false);
+    sAdd("bot", "I'm the Steward, and I lead a small guild of agents: the Collector (chases money owed), the Strategist (ideas for your money) and the Auditor (checks the records). Pick one above, or press Morning Council to hear from all of them. They only read your entries and never change them.", "The Steward");
   })();
 
   /* --- 3D town --- */
@@ -909,18 +1023,19 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     var SKY = 0xcfe6f2;
     var scene = new THREE.Scene();
     scene.background = new THREE.Color(SKY);
-    scene.fog = new THREE.Fog(SKY, 150, 300);
-    var camera = new THREE.PerspectiveCamera(40, 1.6, 0.5, 600);
-    scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x7c9a6c, 0.75));
+    scene.fog = new THREE.Fog(SKY, 170, 380);
+    var camera = new THREE.PerspectiveCamera(40, 1.6, 0.5, 900);
+    var hemi = new THREE.HemisphereLight(0xeaf6ff, 0x7c9a6c, 0.75);
+    scene.add(hemi);
     var sun = new THREE.DirectionalLight(0xfff1d6, 0.7);
     sun.position.set(-40, 64, 62);
-    sun.target.position.set(0, 0, 18);
+    sun.target.position.set(0, 0, 8);
     scene.add(sun.target);
     sun.castShadow = true;
     var smap = window.innerWidth < 700 ? 2048 : 4096;
     sun.shadow.mapSize.set(smap, smap);
-    sun.shadow.camera.left = -62; sun.shadow.camera.right = 62;
-    sun.shadow.camera.top = 78; sun.shadow.camera.bottom = -78;
+    sun.shadow.camera.left = -72; sun.shadow.camera.right = 72;
+    sun.shadow.camera.top = 96; sun.shadow.camera.bottom = -96;
     sun.shadow.camera.near = 1; sun.shadow.camera.far = 260;
     sun.shadow.bias = -0.0006;
     scene.add(sun);
@@ -937,9 +1052,9 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       return m;
     }
     function box(w, h, d, c, x, y, z, parent) { return put(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c)), x, y, z, parent); }
-    function cyl(rt, rb, h, c, x, y, z, parent, seg) { return put(new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg || 14), mat(c)), x, y, z, parent); }
+    function cyl(rt, rb, h, c, x, y, z, parent, seg) { return put(new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg || 20), mat(c)), x, y, z, parent); }
     function cone(r, h, c, x, y, z, parent, seg) { return put(new THREE.Mesh(new THREE.ConeGeometry(r, h, seg || 10), mat(c)), x, y, z, parent); }
-    function ball(r, c, x, y, z, parent) { return put(new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), mat(c)), x, y, z, parent); }
+    function ball(r, c, x, y, z, parent) { return put(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), mat(c)), x, y, z, parent); }
     function pivot(parent, x, y) { var p = new THREE.Group(); p.position.set(x, y, 0); parent.add(p); return p; }
 
     var world = new THREE.Group();
@@ -965,6 +1080,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     var far = new THREE.Group();
     world.add(far);
 
+    box(420, 0.4, 460, 0x86ba86, 0, -0.45, 18, world);
     box(140, 0.4, 170, 0x8fc48f, 0, -0.2, 18, world);
     for (var gp = 0; gp < 60; gp++) patch(rr(2.5, 7), gp % 2 ? 0x86ba86 : 0x9ad09a, rr(-64, 64), rr(-48, 84));
     box(140, 0.1, 6, 0xe8e0cc, 0, 0.06, 0, world);
@@ -1005,7 +1121,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       hedge(z.cx + z.w / 2 + 0.4, z.cz, 1.0, z.d + 1.0);
     });
 
-    var crops = [], windmill = null, clouds = [], coinStat = null, boats = [];
+    var crops = [], windmill = null, clouds = [], coinStat = null, boats = [], drift = [], glints = [];
     (function buildFields() {
       var z = ZONES.fields;
       var rows = [-9.2, -7.0, -4.8, -2.6];
@@ -1137,6 +1253,20 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         box(0.06, 2.4, 1.7, 0xfdf9ee, 0, 2.2, 0.1, boat);
         boats.push({ g: boat, ph: i * 2.1 });
       });
+      (function sailing() {
+        var gm = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 });
+        for (var q = 0; q < 16; q++) {
+          var gl = new THREE.Mesh(new THREE.BoxGeometry(rr(1, 2.2), 0.02, 0.12), gm);
+          gl.position.set(z.cx + rr(-12.5, 12.5), 0.36, z.cz - 6.6 + rr(-3.6, 3.6)); world.add(gl);
+          glints.push({ m: gl, sp: rr(0.5, 1.2), ph: rnd() * 6.3, x0: gl.position.x });
+        }
+        var sb = new THREE.Group(); sb.position.set(z.cx - 12, 0.5, z.cz - 8.4); world.add(sb);
+        box(3.4, 0.7, 1.3, 0xf2efe6, 0, 0, 0, sb);
+        box(2.6, 0.1, 1.1, 0xb88a56, 0, 0.4, 0, sb);
+        cyl(0.06, 0.06, 3, 0x6b4429, 0, 1.9, 0, sb, 8);
+        box(0.05, 2.2, 1.3, 0xd9443a, 0, 1.9, 0.1, sb);
+        drift.push({ g: sb, x: z.cx - 12, min: z.cx - 12, max: z.cx + 12, v: 0.9, ph: 1.3 });
+      })();
       [[-11, 3, 0xd9443a], [-11, 6, 0x3a68ab], [-7.6, 3, 0x3da35d], [-7.6, 6, 0xe2b33a]].forEach(function (c) { box(3.2, 2.2, 2.2, c[2], z.cx + c[0], 1.2, z.cz + c[1], world); });
       box(2.4, 1.6, 1.8, 0x3da35d, z.cx - 11, 3.3, z.cz + 3, world);
       for (var br = 0; br < 5; br++) cyl(0.5, 0.5, 1.0, 0x8a5a3a, z.cx + 6 + (br % 3) * 1.2, 0.7, z.cz + 4 + Math.floor(br / 3) * 1.2, world, 12);
@@ -1202,14 +1332,16 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     function inPlate(x, z) {
       for (var k in ZONES) { var q = ZONES[k]; if (Math.abs(x - q.cx) < q.w / 2 + 2.5 && Math.abs(z - q.cz) < q.d / 2 + 2.5) return true; }
       if (Math.abs(x) < 8 && Math.abs(z) < 8) return true;
+      if (Math.abs(x) < 24 && z < -29 && z > -66) return true;
+      if (z < -34 && z > -42) return true;
       if (Math.abs(x) < 4.5 || Math.abs(z) < 4.5 || Math.abs(z - 28) < 4.5) return true;
       return false;
     }
     (function forest() {
       var placed = 0, tries = 0;
-      while (placed < 170 && tries < 2000) {
+      while (placed < 200 && tries < 3000) {
         tries++;
-        var x = rr(-66, 66), z = rr(-50, 86);
+        var x = rr(-84, 84), z = rr(-66, 96);
         if (inPlate(x, z)) continue;
         var edge = Math.abs(x) > 40 || Math.abs(z) > 32;
         if (!edge && rnd() < 0.55) continue;
@@ -1218,7 +1350,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       }
       [[-34, -26], [34, -26], [-34, 28], [34, 28], [-34, 0], [34, 0], [-34, 56], [34, 56]].forEach(function (p, i) { tree(p[0] + rr(-1, 1), p[1] + rr(-1, 1), i % 4, 1.2, world); });
       for (var h = -3; h <= 3; h++) {
-        var hl = ball(14, 0x7fb87f, h * 24 + rr(-4, 4), 0, -58 + rr(-3, 3), far); hl.scale.set(1.8, 0.32, 1.1);
+        var hl = ball(14, 0x7fb87f, h * 24 + rr(-4, 4), 0, -88 + rr(-3, 3), far); hl.scale.set(1.8, 0.32, 1.1);
         var hl2 = ball(14, 0x74b074, h * 24 + 12 + rr(-4, 4), 0, 96 + rr(-3, 3), far); hl2.scale.set(1.8, 0.3, 1.1);
       }
       for (var rk = 0; rk < 18; rk++) {
@@ -1241,6 +1373,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       for (var i = 0; i < 90; i++) {
         var x = rr(-60, 60), z = rr(-48, 84);
         if (Math.abs(x) < 4 || Math.abs(z) < 4 || Math.abs(z - 28) < 4) continue;
+        if ((Math.abs(x) < 21 && z < -42) || (z < -33.5 && z > -42.5)) continue;
         var tooClose = false;
         for (var k in ZONES) { var q = ZONES[k]; if (Math.abs(x - q.cx) < q.w / 2 + 0.5 && Math.abs(z - q.cz) < q.d / 2 + 0.5) tooClose = true; }
         if (tooClose) continue;
@@ -1260,6 +1393,119 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         world.add(c);
         clouds.push(c);
       }
+    })();
+
+
+    /* ===== Upgrade: sky, time of day, birds, fireflies, river, mountains ===== */
+    var lampMat = mat(0xf4d46a); lampMat.emissive = new THREE.Color(0xf4d46a); lampMat.emissiveIntensity = 0;
+    var winMat = new THREE.MeshStandardMaterial({ color: 0xcfe6f5, roughness: 0.4, emissive: new THREE.Color(0xffd98a), emissiveIntensity: 0 });
+    var orbMat = new THREE.MeshStandardMaterial({ color: 0x9fe3ff, roughness: 0.25, emissive: new THREE.Color(0x4fc8ff), emissiveIntensity: 0.7 });
+    var skyMat = new THREE.ShaderMaterial({
+      uniforms: { top: { value: new THREE.Color(0x6fb4e8) }, bot: { value: new THREE.Color(0xcfe6f2) } },
+      vertexShader: "varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: "uniform vec3 top; uniform vec3 bot; varying vec3 vP; void main(){ float h = clamp(vP.y * 1.7 + 0.08, 0.0, 1.0); gl_FragColor = vec4(mix(bot, top, pow(h, 0.75)), 1.0); }",
+      side: THREE.BackSide, depthWrite: false, fog: false
+    });
+    var skyDome = new THREE.Mesh(new THREE.SphereGeometry(600, 24, 14), skyMat);
+    skyDome.renderOrder = -10; skyDome.frustumCulled = false;
+    scene.add(skyDome);
+    var starsGeo = new THREE.BufferGeometry(), starPos = [];
+    for (var si = 0; si < 260; si++) {
+      var sa = rnd() * Math.PI * 2, se = Math.acos(rnd() * 0.92 + 0.08), sr = 540;
+      starPos.push(Math.sin(se) * Math.cos(sa) * sr, Math.cos(se) * sr, Math.sin(se) * Math.sin(sa) * sr);
+    }
+    starsGeo.setAttribute("position", new THREE.Float32BufferAttribute(starPos, 3));
+    var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false });
+    var stars = new THREE.Points(starsGeo, starMat); stars.frustumCulled = false; scene.add(stars);
+    var sunDisc = new THREE.Mesh(new THREE.SphereGeometry(16, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfff1b8, fog: false }));
+    var moonDisc = new THREE.Mesh(new THREE.SphereGeometry(11, 16, 12), new THREE.MeshBasicMaterial({ color: 0xe8eefc, fog: false }));
+    sunDisc.frustumCulled = false; moonDisc.frustumCulled = false;
+    scene.add(sunDisc); scene.add(moonDisc);
+
+    var sunOff = new THREE.Vector3(), moonOff = new THREE.Vector3();
+    var todMode = 0, TOD = [["Auto", null], ["Day", 12], ["Sunset", 18.3], ["Night", 23.5]];
+    var nightAmt = 0, lastH = -1;
+    var cNightTop = new THREE.Color(0x0a1230), cDayTop = new THREE.Color(0x6fb4e8);
+    var cNightBot = new THREE.Color(0x1b2750), cDayBot = new THREE.Color(0xcfe6f2), cDusk = new THREE.Color(0xf2a468);
+    var cTmp = new THREE.Color(), cTmp2 = new THREE.Color();
+    function localHour() { var d = new Date(); return d.getHours() + d.getMinutes() / 60; }
+    function applyTime(h) {
+      var a = (h - 6) / 12 * Math.PI;
+      var elev = Math.sin(a);
+      var day = clamp(elev * 3.2 + 0.25, 0, 1);
+      var dusk = clamp(1 - Math.abs(elev) / 0.32, 0, 1) * 0.85;
+      nightAmt = 1 - day;
+      cTmp.copy(cNightTop).lerp(cDayTop, day);
+      skyMat.uniforms.top.value.copy(cTmp);
+      cTmp2.copy(cNightBot).lerp(cDayBot, day).lerp(cDusk, dusk);
+      skyMat.uniforms.bot.value.copy(cTmp2);
+      scene.background.copy(cTmp2); scene.fog.color.copy(cTmp2); renderer.setClearColor(cTmp2.getHex(), 1);
+      var lx = -Math.cos(a), ly = Math.max(0.34, Math.abs(elev)), lz = 0.55;
+      var len = Math.sqrt(lx * lx + ly * ly + lz * lz);
+      var isDay = elev > 0;
+      sun.position.set(sun.target.position.x + lx / len * 100, ly / len * 100, sun.target.position.z + lz / len * 100);
+      if (isDay) { sun.color.setHex(0xfff1d6).lerp(new THREE.Color(0xffb070), dusk * 0.8); sun.intensity = 0.15 + 0.6 * day; }
+      else { sun.color.setHex(0x9fb4ff); sun.intensity = 0.22; }
+      hemi.intensity = 0.26 + 0.5 * day;
+      hemi.color.setHex(0xeaf6ff).lerp(new THREE.Color(0x4a5a9a), nightAmt * 0.8);
+      lampMat.emissiveIntensity = clamp(nightAmt * 1.4, 0, 1.2);
+      winMat.emissiveIntensity = clamp(nightAmt * 1.2, 0, 1);
+      orbMat.emissiveIntensity = 0.6 + nightAmt * 0.9;
+      starMat.opacity = clamp(nightAmt * 1.3 - 0.2, 0, 1);
+      sunDisc.visible = elev > -0.05; moonDisc.visible = elev < 0.1;
+      sunOff.set(-Math.cos(a) * 420, Math.max(-20, elev * 380), 150);
+      moonOff.set(Math.cos(a) * 420, Math.max(-20, -elev * 380), 150);
+      fireflies.forEach(function (f) { f.m.visible = nightAmt > 0.45; });
+    }
+    function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+
+    var fireflies = [], birds = [];
+    (function life() {
+      var bm = new THREE.MeshBasicMaterial({ color: 0x2b2f36, side: THREE.DoubleSide });
+      for (var b = 0; b < 8; b++) {
+        var g = new THREE.Group();
+        var wl = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.32), bm), wr = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.32), bm);
+        wl.position.x = -0.45; wr.position.x = 0.45;
+        var pl = new THREE.Group(), pr = new THREE.Group(); pl.add(wl); pr.add(wr); g.add(pl); g.add(pr);
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.5), bm));
+        scene.add(g);
+        birds.push({ g: g, pl: pl, pr: pr, r: 26 + (b % 4) * 11, h: 20 + (b % 3) * 4, sp: 0.16 + (b % 3) * 0.04, ph: b * 0.8, cx: (b % 2 ? 18 : -18), cz: (b % 3) * 10 + 6 });
+      }
+      var fm = new THREE.MeshBasicMaterial({ color: 0xd8ff7a });
+      for (var f = 0; f < 46; f++) {
+        var m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), fm);
+        m.visible = false; world.add(m);
+        fireflies.push({ m: m, x: rr(-60, 60), z: rr(-60, 90), y: rr(0.8, 3), ph: rnd() * 6.3, s: rr(0.4, 1) });
+      }
+    })();
+
+    /* river across the north with a bridge on the main road */
+    (function river() {
+      box(150, 0.2, 9, 0x7a6a4a, 0, 0.05, -38, world);
+      var w = box(150, 0.28, 6.6, 0x4aa3d8, 0, 0.16, -38, world); w.castShadow = false;
+      var gm = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 });
+      for (var g = 0; g < 22; g++) {
+        var gl = new THREE.Mesh(new THREE.BoxGeometry(rr(1.2, 2.6), 0.02, 0.12), gm);
+        gl.position.set(rr(-70, 70), 0.32, -38 + rr(-2.6, 2.6)); world.add(gl);
+        glints.push({ m: gl, sp: rr(0.5, 1.2), ph: rnd() * 6.3, x0: gl.position.x, rv: true });
+      }
+      box(6.6, 0.3, 10.4, 0x9a6a3e, 0, 0.62, -38, world);
+      for (var pl = 0; pl < 10; pl++) box(6.4, 0.04, 0.08, 0x6b4429, 0, 0.79, -42.6 + pl * 1.02, world);
+      [-3.2, 3.2].forEach(function (rx) {
+        box(0.16, 0.16, 10.4, 0x6b4429, rx, 1.5, -38, world);
+        for (var q = 0; q < 6; q++) box(0.18, 1.1, 0.18, 0x6b4429, rx, 1.05, -42.5 + q * 1.8, world);
+      });
+      [[-3, -29.5], [3, -29.5], [-3, -46.5], [3, -46.5]].forEach(function (pp) { cyl(0.12, 0.14, 3.2, 0x5a4a3a, pp[0] * 1.4, 1.7, pp[1] + (pp[1] < -38 ? -0.5 : 0.5), world, 8); ball(0.42, 0xf4d46a, pp[0] * 1.4, 3.5, pp[1] + (pp[1] < -38 ? -0.5 : 0.5), world); });
+    })();
+    /* mountains on the horizon */
+    (function mountains() {
+      function mtn(x, z, r, h) {
+        cone(r, h, 0x8fa7bd, x, h / 2, z, far, 8);
+        cone(r * 0.36, h * 0.34, 0xffffff, x, h * 0.83, z, far, 8);
+      }
+      for (var i = -5; i <= 5; i++) mtn(i * 40 + rr(-8, 8), -150 + rr(-14, 10), rr(20, 30), rr(26, 44));
+      for (var j = -2; j <= 5; j++) { mtn(-135 + rr(-8, 8), j * 36 + rr(-6, 6), rr(18, 26), rr(22, 36)); mtn(135 + rr(-8, 8), j * 36 + rr(-6, 6), rr(18, 26), rr(22, 36)); }
+      far.traverse(function (m) { m.castShadow = false; m.receiveShadow = false; });
     })();
 
     function makeSign() {
@@ -1299,6 +1545,41 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       signs[k] = s;
       drawSign(s, ZONES[k].name, "");
     });
+
+    /* ===== Agent Guild Hall (north) ===== */
+    var guildOrb = null, guildRing = null;
+    (function buildGuild() {
+      var gz = -54;
+      box(36, 0.3, 20, 0xd8cfb6, 0, 0.18, gz, world);
+      box(38, 0.12, 22, 0x6f5a40, 0, 0.08, gz, world);
+      box(14, 6.4, 8, 0xe9dfc8, 0, 3.4, gz - 3, world);
+      var roof = cone(10.8, 4.8, 0x4a5fa8, 0, 8.8, gz - 3, world, 4); roof.rotation.y = Math.PI / 4;
+      box(2.8, 3.6, 0.2, 0x6b4429, 0, 2.0, gz + 1.05, world);
+      [-4.4, 4.4].forEach(function (wx) { put(new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.9, 0.12), winMat), wx, 3.8, gz + 1.05, world); });
+      [-11, 11].forEach(function (tx) {
+        cyl(2.3, 2.5, 10, 0xdcd2b8, tx, 5.2, gz - 4, world, 18);
+        cone(3.0, 3.4, 0x4a5fa8, tx, 11.9, gz - 4, world, 18);
+        put(new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.5, 0.12), winMat), tx, 6.6, gz - 1.5, world);
+      });
+      guildOrb = put(new THREE.Mesh(new THREE.SphereGeometry(1.2, 20, 14), orbMat), 0, 12.4, gz - 3, world);
+      guildOrb.castShadow = false;
+      guildRing = new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.09, 8, 36), new THREE.MeshBasicMaterial({ color: 0x7ad7ff }));
+      guildRing.position.set(0, 12.4, gz - 3); world.add(guildRing);
+      [[-16, 0xd9443a], [16, 0x3da35d]].forEach(function (b) {
+        cyl(0.1, 0.12, 6, 0x5a4a3a, b[0], 3.2, gz + 6, world, 8);
+        box(0.08, 1.8, 1.2, b[1], b[0], 5.2, gz + 6.7, world);
+      });
+      [[-15, 7], [15, 7], [-6, 9], [6, 9]].forEach(function (p) {
+        cyl(0.12, 0.14, 3.4, 0x5a4a3a, p[0], 2.0, gz + p[1], world, 8);
+        ball(0.45, 0xf4d46a, p[0], 3.8, gz + p[1], world);
+      });
+      [-7, 0, 7].forEach(function (px, i) { cyl(1.3, 1.5, 0.35, [0xb7792f, 0x5a6bc4, 0x2b2f36][i], px, 0.5, gz + 5.6, world, 24); });
+      var gs = makeSign();
+      gs.spr.position.set(0, 16.2, gz - 3);
+      gs.spr.scale.set(11, 2.6, 1);
+      drawSign(gs, "The Agent Guild", "Ask your AI agents");
+      signs.guild = gs;
+    })();
 
     /* characters */
     var SKINS3 = [0xf0c8a0, 0xd9a577, 0xb97e52, 0x8a5a3a];
@@ -1389,6 +1670,25 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     stewardSign.spr.position.set(5.2, 5.6, 5.4);
     drawSign(stewardSign, "The Steward", "Tap to ask");
     stewardSign.spr.visible = hasClaude;
+
+    /* guild agents (clickable) */
+    var guildAgents = [];
+    [["collector", "The Collector", -7, { outfit: "orange", hair: "cap", hairc: "brown", acc: "bag" }],
+     ["strategist", "The Strategist", 0, { outfit: "purple", hair: "bun", hairc: "blonde", acc: "scarf" }],
+     ["auditor", "The Auditor", 7, { outfit: "black", hair: "short", hairc: "grey", acc: "glasses" }]].forEach(function (d, i) {
+      var r = makeWorker({ id: "__agent_" + d[0], kind: "owed", look: d[3] });
+      r.g.position.set(d[2], 0.7, -48.4);
+      r.g.rotation.y = 0;
+      r.g.userData.id = "__agent_" + d[0];
+      r.body.scale.setScalar(1.5);
+      r.tool.visible = false;
+      var sg = makeSign();
+      sg.spr.scale.set(7.4, 1.75, 1);
+      sg.spr.position.set(d[2], 5.4, -48.4);
+      drawSign(sg, d[1], "Tap to ask");
+      r.g.visible = hasClaude; sg.spr.visible = hasClaude;
+      guildAgents.push({ r: r, id: d[0], ph: i * 1.7 });
+    });
 
     function rectOf(zone) {
       var z = ZONES[zone];
@@ -1490,7 +1790,10 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
           var n = zoneItems(k).filter(function (v) { return k === "count" ? v.status !== "done" : true; }).length;
           return '<button type="button" class="zcard" data-zone="' + k + '"><span class="zc-name">' + esc(ZONES[k].name) + '</span><span class="zc-amt">' + esc(zoneTotal(k)) +
             '</span><span class="zc-n">' + n + (n === 1 ? " villager" : " villagers") + '</span><span class="zc-b">' + esc(ZONES[k].blurb) + "</span></button>";
-        }).join("") + "</div>";
+        }).join("") + '<button type="button" class="zcard" data-zone="guild"><span class="zc-name">The Agent Guild</span><span class="zc-amt">4 AI agents</span><span class="zc-n">Steward, Collector, Strategist, Auditor</span><span class="zc-b">Ask them what to chase, where to put money, and what the records are missing.</span></button></div>';
+      } else if (focus === "guild") {
+        panel.innerHTML = '<div class="zhead"><button type="button" class="btn" data-zone="overview">&larr; Overview</button><div><h2>The Agent Guild</h2><div class="zc-b">AI agents that read your entries and never change them.</div></div></div>' +
+          '<div class="zsum">' + AGENTS.map(function (a) { return '<button type="button" class="zcard" data-agent="' + a.id + '"><span class="zc-name">' + esc(a.name) + '</span><span class="zc-b">' + esc(a.role) + '</span><span class="zc-n">Tap to ask</span></button>'; }).join('') + '<button type="button" class="zcard" data-council="1"><span class="zc-name">Morning Council</span><span class="zc-b">All agents report, then the Steward gives your top 3 actions.</span><span class="zc-n">Tap to run</span></button></div>';
       } else {
         var list = zoneItems(focus).sort(function (a, b) { return usd(b) - usd(a); });
         panel.innerHTML = '<div class="zhead"><button type="button" class="btn" data-zone="overview">&larr; Overview</button><div><h2>' + esc(ZONES[focus].name) + '</h2><div class="zc-b">' + esc(ZONES[focus].blurb) + " Total: " + esc(zoneTotal(focus)) + "</div></div></div>" +
@@ -1499,6 +1802,9 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     }
     function openItem(id) { return state.items.filter(function (x) { return x.id === id; })[0]; }
     function onAct(ev) {
+      var ag = ev.target.closest("[data-agent]");
+      if (ag) { openSteward(ag.getAttribute("data-agent")); return; }
+      if (ev.target.closest("[data-council]")) { councilRun(); return; }
       var z = ev.target.closest("[data-zone]");
       if (z) { setFocus(z.getAttribute("data-zone")); return; }
       var f = ev.target.closest("[data-find]");
@@ -1536,7 +1842,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         Object.keys(ents).filter(function (id) { return ents[id].v.name.toLowerCase().indexOf(q) >= 0; })[0];
       if (hit) { followEnt(hit); search.value = ""; }
     });
-    var NAV = [["overview", "Overview"], ["fields", "The Fields"], ["square", "Waiting Bench"], ["home", "Home"], ["count", "Money You Owe"], ["harbor", "The Harbor"], ["stall", "Market Stall"]];
+    var NAV = [["overview", "Overview"], ["fields", "The Fields"], ["square", "Waiting Bench"], ["home", "Home"], ["count", "Money You Owe"], ["harbor", "The Harbor"], ["stall", "Market Stall"], ["guild", "Agent Guild"]];
     NAV.forEach(function (n) {
       var b = document.createElement("button");
       b.type = "button"; b.className = "btn"; b.textContent = n[1]; b.setAttribute("data-nav", n[0]);
@@ -1545,12 +1851,13 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     });
     var sb = document.createElement("button");
     sb.type = "button"; sb.className = "btn"; sb.textContent = "Ask the Steward";
-    sb.addEventListener("click", openSteward);
+    sb.addEventListener("click", function () { openSteward("steward"); });
     if (hasClaude) nav.appendChild(sb);
     nav.appendChild(search); nav.appendChild(datalist);
 
     var VIEWS = {
-      overview: { tx: 0, tz: 16, dist: 122, theta: 0.45, phi: 0.95 },
+      overview: { tx: 0, tz: 8, dist: 140, theta: 0.45, phi: 0.95 },
+      guild: { tx: 0, tz: -48, dist: 40, theta: 0, phi: 0.9 },
       fields: { tx: -19, tz: -9, dist: 38, theta: 0.3, phi: 0.95 },
       square: { tx: 19, tz: -9, dist: 38, theta: -0.3, phi: 0.95 },
       home: { tx: -19, tz: 18, dist: 38, theta: 0.3, phi: 0.95 },
@@ -1731,11 +2038,13 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       ray.setFromCamera(ndc, camera);
       var groups = Object.keys(ents).map(function (id) { ents[id].rig.g.userData.id = id; return ents[id].rig.g; });
       groups.push(steward.g);
+      guildAgents.forEach(function (a) { groups.push(a.r.g); });
       var hits = ray.intersectObjects(groups, true);
       if (!hits.length) return;
       var o = hits[0].object;
       while (o && !(o.userData && o.userData.id)) o = o.parent;
-      if (o && o.userData.id === "__steward") { openSteward(); return; }
+      if (o && o.userData.id === "__steward") { openSteward("steward"); return; }
+      if (o && typeof o.userData.id === "string" && o.userData.id.indexOf("__agent_") === 0) { openSteward(o.userData.id.slice(8)); return; }
       if (o && o.userData.id) followEnt(o.userData.id);
     }
 
@@ -1765,7 +2074,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         if (pinch) {
           var a = ptrs[ids[0]], b = ptrs[ids[1]];
           var nd = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-          goal.dist = clamp(pinch.dist * pinch.d / nd, 8, 140);
+          goal.dist = clamp(pinch.dist * pinch.d / nd, 8, 170);
         }
       }
     });
@@ -1778,7 +2087,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     host.addEventListener("pointercancel", function (ev) { delete ptrs[ev.pointerId]; pinch = null; });
     host.addEventListener("wheel", function (ev) {
       ev.preventDefault();
-      goal.dist = clamp(goal.dist * Math.exp(ev.deltaY * 0.001), 8, 140);
+      goal.dist = clamp(goal.dist * Math.exp(ev.deltaY * 0.001), 8, 170);
     }, { passive: false });
     host.addEventListener("keydown", function (ev) {
       var k = ev.key, used = true;
@@ -1786,17 +2095,29 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       else if (k === "ArrowRight") goal.theta += 0.15;
       else if (k === "ArrowUp") goal.phi = clamp(goal.phi - 0.08, 0.3, 1.4);
       else if (k === "ArrowDown") goal.phi = clamp(goal.phi + 0.08, 0.3, 1.4);
-      else if (k === "+" || k === "=") goal.dist = clamp(goal.dist / 1.2, 8, 140);
-      else if (k === "-") goal.dist = clamp(goal.dist * 1.2, 8, 140);
+      else if (k === "+" || k === "=") goal.dist = clamp(goal.dist / 1.2, 8, 170);
+      else if (k === "-") goal.dist = clamp(goal.dist * 1.2, 8, 170);
       else if (k === "Escape" || k === "0") setFocus("overview");
       else if (k >= "1" && k <= "6") setFocus(ZORDER[Number(k) - 1]);
+      else if (k === "7") setFocus("guild");
       else used = false;
       if (used) ev.preventDefault();
     });
-    document.getElementById("zin").addEventListener("click", function () { goal.dist = clamp(goal.dist / 1.25, 8, 140); });
-    document.getElementById("zout").addEventListener("click", function () { goal.dist = clamp(goal.dist * 1.25, 8, 140); });
+    document.getElementById("zin").addEventListener("click", function () { goal.dist = clamp(goal.dist / 1.25, 8, 170); });
+    document.getElementById("zout").addEventListener("click", function () { goal.dist = clamp(goal.dist * 1.25, 8, 170); });
     document.getElementById("zreset").addEventListener("click", function () { if (following) { goal.dist = 12; goal.phi = 0.85; goal.theta = 0.3; } else { goal = copyView(VIEWS[focus]); } });
 
+
+    (function todUi() {
+      var tb = document.getElementById("tod");
+      applyTime(localHour());
+      if (!tb) return;
+      tb.addEventListener("click", function () {
+        todMode = (todMode + 1) % TOD.length;
+        tb.textContent = "Time: " + TOD[todMode][0];
+        if (TOD[todMode][1] === null) { lastH = -1; } else { applyTime(TOD[todMode][1]); }
+      });
+    })();
     var lw = 0, lh = 0, last = performance.now(), tt = 0;
     var vec = new THREE.Vector3();
     function project(x, y, z, el, w, h) {
@@ -1837,6 +2158,16 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       steward.g.rotation.y = 0.5 + Math.sin(tt * 0.5) * 0.35;
       steward.armR.rotation.z = 2.4 + Math.sin(tt * 3) * 0.4;
       steward.g.position.y = Math.abs(Math.sin(tt * 2)) * 0.05;
+      guildAgents.forEach(function (a) {
+        resetPose(a.r);
+        a.r.g.position.y = 0.7 + Math.abs(Math.sin(tt * 1.6 + a.ph)) * 0.05;
+        a.r.g.rotation.y = Math.sin(tt * 0.45 + a.ph) * 0.35;
+        a.r.armR.rotation.z = 2.4 + Math.sin(tt * 3 + a.ph) * 0.4;
+      });
+      if (guildOrb) { guildOrb.position.y = 12.4 + Math.sin(tt * 1.4) * 0.25; guildRing.position.y = guildOrb.position.y; guildRing.rotation.x = tt * 0.8; guildRing.rotation.y = tt * 0.5; }
+      if (todMode === 0) { var hh = localHour(); if (Math.abs(hh - lastH) > 0.02) { lastH = hh; applyTime(hh); } }
+      skyDome.position.copy(camera.position); stars.position.copy(camera.position);
+      sunDisc.position.copy(camera.position).add(sunOff); moonDisc.position.copy(camera.position).add(moonOff);
       if (!still) {
         crops.forEach(function (c) { c.m.scale.y = 1 + Math.sin(tt * 1.5 + c.ph) * 0.1; });
         if (windmill) windmill.rotation.z -= dt * 0.9;
@@ -1847,6 +2178,20 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
           var rad = 0.2 + u * 1.5;
           d.m.position.set(Math.cos(d.ang) * rad, 1.1 + Math.sin(u * Math.PI) * 1.9, Math.sin(d.ang) * rad);
         });
+        birds.forEach(function (b) {
+          var an = tt * b.sp + b.ph;
+          b.g.position.set(b.cx + Math.cos(an) * b.r, b.h + Math.sin(tt * 0.6 + b.ph) * 1.2, b.cz + Math.sin(an) * b.r);
+          b.g.rotation.y = -an;
+          var fl = Math.sin(tt * 9 + b.ph) * 0.6;
+          b.pl.rotation.z = fl; b.pr.rotation.z = -fl;
+          b.g.visible = nightAmt < 0.6;
+        });
+        fireflies.forEach(function (f) {
+          if (!f.m.visible) return;
+          f.m.position.set(f.x + Math.sin(tt * f.s + f.ph) * 2.2, f.y + Math.sin(tt * 1.7 + f.ph) * 0.5, f.z + Math.cos(tt * f.s * 0.8 + f.ph) * 2.2);
+        });
+        glints.forEach(function (g) { g.m.scale.x = 0.6 + 0.5 * Math.sin(tt * 2 * g.sp + g.ph); g.m.position.x = g.x0 + Math.sin(tt * 0.4 * g.sp + g.ph) * 1.4; });
+        drift.forEach(function (d) { d.x += dt * d.v; if (d.x > d.max) d.x = d.min; d.g.position.x = d.x; d.g.position.y = 0.5 + Math.sin(tt * 1.2 + d.ph) * 0.09; d.g.rotation.z = Math.sin(tt + d.ph) * 0.04; });
         clouds.forEach(function (c) { c.position.x += dt * 0.7; if (c.position.x > 110) c.position.x = -110; });
       }
       renderer.render(scene, camera);
@@ -1875,6 +2220,23 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch (e) { db = null; }
     if (!db) { useLocal(); return; }
     var col = db.collection("villagers");
+    (function backupUi() {
+      var bb = document.getElementById("bak-btn");
+      if (!bb) return;
+      bb.hidden = false;
+      bb.addEventListener("click", function () {
+        var json = JSON.stringify(state.items, null, 2);
+        var old = document.getElementById("bak-box"); if (old) old.remove();
+        function fallback() {
+          var box = document.createElement("div"); box.id = "bak-box"; box.className = "note";
+          box.innerHTML = "Select all, copy, and save this somewhere safe (a note or a file named money-village-data.json):<br>";
+          var ta = document.createElement("textarea"); ta.readOnly = true; ta.value = json; ta.style.cssText = "width:100%;height:120px;margin-top:6px;font:12px monospace";
+          box.appendChild(ta);
+          document.getElementById("note").after(box); ta.focus(); ta.select();
+        }
+        try { navigator.clipboard.writeText(json).then(function () { bb.textContent = "Backup copied"; setTimeout(function () { bb.textContent = "Copy backup"; }, 2500); }, fallback); } catch (e) { fallback(); }
+      });
+    })();
     store = {
       newId: function () { return col.doc().id; },
       save: function (o) { return col.doc(o.id).set(o); },
