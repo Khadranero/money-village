@@ -164,6 +164,15 @@ body.view-town .listonly { display: none !important; }
 .tnav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .tnav .btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 #zonepanel { margin-top: 14px; }
+.zcard.static { cursor: default; }
+.zcard.static:hover { border-color: var(--line); }
+.vrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.vrow input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); min-width: 0; width: 130px; }
+.vrow label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--muted); }
+.gbar { display: block; height: 9px; border-radius: 6px; background: var(--line); overflow: hidden; margin: 4px 0; }
+.gbar i { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+.subh { font-family: var(--font-display); font-size: 17px; margin: 18px 0 8px; }
+.wp-out { display: block; margin-top: 8px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .zsum { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .zcard { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .zcard:hover { border-color: var(--accent); }
@@ -405,6 +414,9 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
 <script>
 (function () {
   var state = { items: [], loaded: false, slow: false, error: null, editing: null };
+  var pmeta = { vault: null, goals: null }, pdeals = [], metaHook = null, metaSaver = null;
+  function metaSave(k, d) { return metaSaver ? metaSaver(k, d) : Promise.reject(new Error("no storage")); }
+  function metaChanged() { if (metaHook) { try { metaHook(); } catch (err) { /* ignore */ } } }
   var store = null;
   var chain = Promise.resolve();
 
@@ -758,6 +770,17 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       try { localStorage.setItem(KEY, JSON.stringify(state.items)); state.persist = true; } catch (err) { state.persist = false; }
     }
     persist();
+    var MKEY = "moneyVillage.meta.v1";
+    try {
+      var mraw = localStorage.getItem(MKEY);
+      if (mraw) { var mo = JSON.parse(mraw); if (mo && typeof mo === "object") { pmeta.vault = mo.vault || null; pmeta.goals = mo.goals || null; pdeals = Array.isArray(mo.deals) ? mo.deals : []; } }
+    } catch (err) { /* ignore */ }
+    metaSaver = function (k, d) {
+      pmeta[k] = d;
+      try { localStorage.setItem(MKEY, JSON.stringify({ vault: pmeta.vault, goals: pmeta.goals, deals: pdeals })); } catch (err) { /* ignore */ }
+      metaChanged();
+      return Promise.resolve();
+    };
     store = {
       newId: function () { return "v" + Math.random().toString(36).slice(2, 10); },
       save: function (o) {
@@ -1111,6 +1134,14 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       stall: { cx: 19, cz: 42, w: 28, d: 22, name: "The Market Stall", plate: 0xe6d3a8, wz0: -4, wz1: 8.5, blurb: "Stock you are holding and ready to sell." }
     };
     var ZORDER = ["fields", "square", "home", "count", "harbor", "stall"];
+    var PLACES = {
+      vault: { cx: -50, cz: -14, w: 22, d: 18, name: "The Vault", plate: 0xcfd3d8, wz0: 0, wz1: 0, blurb: "Money that has come back, cash you are holding, and what lands soon." },
+      lighthouse: { cx: -50, cz: 42, w: 22, d: 18, name: "The Lighthouse", plate: 0xd8d2c0, wz0: 0, wz1: 0, blurb: "Your goals. The beam gets stronger as you get closer." },
+      workshop: { cx: 50, cz: -14, w: 22, d: 18, name: "The Workshop", plate: 0xd8c7a6, wz0: 0, wz1: 0, blurb: "Plan where money goes next, and see deals the scout found." },
+      bank: { cx: 50, cz: 14, w: 22, d: 18, name: "Bank of Saad", plate: 0xd9d4c4, wz0: 0, wz1: 0, blurb: "Everything you share with Saad, Leo and Dahduli." }
+    };
+    var PLACE_KEYS = ["vault", "lighthouse", "workshop", "bank"];
+    PLACE_KEYS.forEach(function (k) { ZONES[k] = PLACES[k]; });
 
     var seed = 11;
     function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
@@ -1589,6 +1620,264 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       drawSign(s, ZONES[k].name, "");
     });
 
+
+    /* ===== New places: Vault, Lighthouse, Workshop, Bank of Saad ===== */
+    var placeSigns = {}, vaultWheel = null, gearA = null, gearB = null, smokePuffs = [], lightBeam = null;
+    (function buildPlaces() {
+      function base(k) {
+        var z = PLACES[k];
+        box(z.w + 1.4, 0.12, z.d + 1.4, 0x6f5a40, z.cx, 0.06, z.cz, world);
+        box(z.w, 0.2, z.d, z.plate, z.cx, 0.12, z.cz, world);
+        hedge(z.cx - z.w / 2 - 0.4, z.cz, 1.0, z.d + 1.0);
+        hedge(z.cx + z.w / 2 + 0.4, z.cz, 1.0, z.d + 1.0);
+        var sg = makeSign(); sg.spr.scale.set(10, 2.4, 1); placeSigns[k] = sg; return z;
+      }
+      /* Vault */
+      (function () {
+        var z = base("vault"), x = z.cx, c = z.cz;
+        box(14, 0.5, 9, 0xb9bec6, x, 0.4, c - 3.8, world);
+        box(12, 6, 7.5, 0x9aa3ad, x, 3.6, c - 4.4, world);
+        box(13.2, 0.7, 8.6, 0x6d757f, x, 6.9, c - 4.4, world);
+        var rf = cone(7.6, 2.4, 0x7b848e, x, 8.4, c - 4.4, world, 4); rf.rotation.y = Math.PI / 4;
+        var door = cyl(2.5, 2.5, 0.5, 0xc3a64a, x, 3.2, c - 0.55, world, 32); door.rotation.x = Math.PI / 2;
+        vaultWheel = new THREE.Group(); vaultWheel.position.set(x, 3.2, c - 0.2); world.add(vaultWheel);
+        var tr = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.12, 10, 28), mat(0xe2b33a)); vaultWheel.add(tr);
+        for (var s = 0; s < 4; s++) { var sp = box(0.2, 2.6, 0.18, 0xe2b33a, 0, 0, 0, vaultWheel); sp.rotation.z = s * Math.PI / 4; }
+        for (var q = -2; q <= 2; q += 4) { cyl(0.55, 0.55, 5.8, 0xe3e6ea, x + q * 1.9, 3.3, c - 0.2, world, 20); }
+        ball(0.5, 0xf4d46a, x, 6.2, c - 0.2, world);
+        [[-8, 0], [8, 0]].forEach(function (g) {
+          for (var r = 0; r < 3; r++) for (var i = 0; i < 3 - r; i++) box(1.3, 0.42, 0.7, 0xe2b33a, x + g[0] + (i - (2 - r) / 2) * 1.4, 0.45 + r * 0.44, c + 2.2, world);
+        });
+        for (var cs = 0; cs < 3; cs++) cyl(0.55, 0.55, 0.14, 0xf2c230, x - 3 + cs * 3, 0.3 + 0.14 * cs, c + 3.6, world, 16);
+        [[-6, 6], [6, 6]].forEach(function (p) { cyl(0.12, 0.14, 3.2, 0x5a4a3a, x + p[0], 1.9, c + p[1], world, 8); ball(0.45, 0xf4d46a, x + p[0], 3.6, c + p[1], world); });
+        box(4, 0.1, 3, 0xcfc4a8, x, 0.12, c + 10.5, world);
+      })();
+      /* Workshop */
+      (function () {
+        var z = base("workshop"), x = z.cx, c = z.cz;
+        box(12, 5, 7.5, 0xb98a56, x, 2.9, c - 4.4, world);
+        var rf = cone(9.2, 3.4, 0x7a3b2b, x, 6.9, c - 4.4, world, 4); rf.rotation.y = Math.PI / 4;
+        box(1.1, 3.4, 1.1, 0x8a8f98, x + 3.4, 7.6, c - 5.4, world);
+        for (var i = 0; i < 5; i++) { var p = ball(0.55, 0xdcdcdc, x + 3.4, 9.6, c - 5.4, world); p.castShadow = false; smokePuffs.push({ m: p, ph: i / 5, x0: x + 3.4, y0: 9.4, z0: c - 5.4 }); }
+        box(2.4, 3.2, 0.2, 0x5a3a22, x, 2.2, c - 0.55, world);
+        gearA = new THREE.Group(); gearA.position.set(x - 3.6, 3.4, c - 0.45); world.add(gearA);
+        gearB = new THREE.Group(); gearB.position.set(x + 3.4, 2.6, c - 0.45); world.add(gearB);
+        [[gearA, 1.4], [gearB, 1.0]].forEach(function (G) {
+          var d = cyl(G[1], G[1], 0.3, 0xb6bcc4, 0, 0, 0, G[0], 20); d.rotation.x = Math.PI / 2;
+          for (var t = 0; t < 8; t++) { var tb = box(0.35, 0.5, 0.3, 0x9aa1aa, Math.cos(t * Math.PI / 4) * (G[1] + 0.15), Math.sin(t * Math.PI / 4) * (G[1] + 0.15), 0, G[0]); tb.rotation.z = t * Math.PI / 4; }
+        });
+        box(3.4, 0.9, 1.3, 0x8a5a3a, x - 6.8, 0.65, c + 2.2, world);
+        box(1.2, 0.7, 0.8, 0x4a4f57, x + 6.2, 0.55, c + 2.8, world); box(1.8, 0.35, 0.9, 0x4a4f57, x + 6.2, 1.05, c + 2.8, world);
+        box(1.1, 1.1, 1.1, 0xc99b5e, x - 5, 0.7, c + 4.6, world); box(1.1, 1.1, 1.1, 0xb98a56, x - 3.7, 0.7, c + 4.6, world);
+        [[-6, 6], [6, 6]].forEach(function (p) { cyl(0.12, 0.14, 3.2, 0x5a4a3a, x + p[0], 1.9, c + p[1], world, 8); ball(0.45, 0xf4d46a, x + p[0], 3.6, c + p[1], world); });
+        box(4, 0.1, 3, 0xcfc4a8, x, 0.12, c + 10.5, world);
+      })();
+      /* Lighthouse */
+      (function () {
+        var z = base("lighthouse"), x = z.cx, c = z.cz;
+        cyl(5.2, 6.2, 1.4, 0x8a8f98, x, 0.85, c - 1, world, 14);
+        for (var s = 0; s < 4; s++) cyl(2.5 - s * 0.22, 2.7 - s * 0.22, 3, s % 2 ? 0xf7f3e8 : 0xc43d33, x, 2.5 + s * 3, c - 1, world, 20);
+        cyl(3.0, 2.7, 0.5, 0x2b2f36, x, 14.3, c - 1, world, 20);
+        cyl(1.3, 1.3, 1.9, 0xcfe9ff, x, 15.5, c - 1, world, 16).castShadow = false;
+        ball(0.95, 0xf4d46a, x, 15.5, c - 1, world);
+        cone(1.9, 1.7, 0xc43d33, x, 17.3, c - 1, world, 16);
+        lightBeam = new THREE.Group(); lightBeam.position.set(x, 15.5, c - 1); world.add(lightBeam);
+        var bm = new THREE.MeshBasicMaterial({ color: 0xffe28a, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide });
+        lightBeam.userData.mat = bm;
+        [0, Math.PI].forEach(function (a) {
+          var cn = new THREE.Mesh(new THREE.ConeGeometry(2.4, 16, 18, 1, true), bm);
+          var arm = new THREE.Group(); arm.rotation.y = a; arm.add(cn); cn.position.x = 8; cn.rotation.z = Math.PI / 2; lightBeam.add(arm);
+        });
+        for (var r = 0; r < 7; r++) ball(rr(0.5, 1.2), 0x7d838c, x + rr(-8, 8), 0.5, c + rr(2, 7), world);
+        box(4, 0.1, 3, 0xcfc4a8, x, 0.12, c - 10.5, world);
+      })();
+      /* Bank of Saad */
+      (function () {
+        var z = base("bank"), x = z.cx, c = z.cz;
+        box(16, 0.5, 10, 0xe9e4d6, x, 0.4, c - 2.6, world);
+        box(14, 0.5, 9, 0xeeeadc, x, 0.9, c - 3.2, world);
+        box(12, 5.5, 6, 0xefe9da, x, 4.0, c - 5.6, world);
+        box(13.4, 0.7, 7.6, 0xd8cfb4, x, 7.1, c - 4.8, world);
+        var rf = cone(8.6, 2.6, 0xc9bd9c, x, 8.7, c - 4.8, world, 4); rf.rotation.y = Math.PI / 4;
+        for (var i = -2; i <= 2; i++) cyl(0.55, 0.55, 5.4, 0xf7f3e8, x + i * 2.3, 3.7, c - 1.2, world, 20);
+        box(2.4, 3.2, 0.2, 0x6b4429, x, 2.7, c - 2.55, world);
+        var em = cyl(1.2, 1.2, 0.25, 0xe2b33a, x, 6.0, c - 1.0, world, 24); em.rotation.x = Math.PI / 2;
+        [-4.2, 4.2].forEach(function (wx) { put(new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.9, 0.12), winMat), x + wx, 4.0, c - 2.55, world); });
+        [[-7.6, 0xd9443a], [7.6, 0x3da35d]].forEach(function (b) { cyl(0.1, 0.12, 6, 0x5a4a3a, x + b[0], 3.4, c + 3, world, 8); box(0.08, 1.7, 1.2, b[1], x + b[0], 5.4, c + 3.7, world); });
+        for (var cs = 0; cs < 4; cs++) cyl(0.5, 0.5, 0.14, 0xf2c230, x + 5 + (cs % 2) * 0.2, 0.3 + 0.14 * cs, c + 5, world, 16);
+        [[-6, 7], [6, 7]].forEach(function (p) { cyl(0.12, 0.14, 3.2, 0x5a4a3a, x + p[0], 1.9, c + p[1], world, 8); ball(0.45, 0xf4d46a, x + p[0], 3.6, c + p[1], world); });
+        box(4, 0.1, 3, 0xcfc4a8, x, 0.12, c - 10.5, world);
+      })();
+    })();
+
+    var PARTNERS = [["Saad", /\bsaad\b/i], ["Leo", /\bleo\b/i], ["Dahduli", /\bdahd?ouli\b|\bdahduli\b/i]];
+    function mentions(v, re) { return re.test(String(v.name || "") + " " + String(v.note || "") + " " + String(v.where || "")); }
+    function partnerItems(re) { return state.items.filter(function (v) { return mentions(v, re); }); }
+    function usdN(n, cur) { return usd({ amount: n, currency: cur }); }
+    function vaultData() {
+      var back = 0, soon = [], late = [], soonSum = 0, lateSum = 0, today = new Date().toISOString().slice(0, 10);
+      state.items.forEach(function (v) {
+        if (v.kind !== "debt" && v.kind !== "personal") back += usdN(num(v.profitReceived), v.currency) + usdN(num(v.recovered), v.currency);
+        if (v.status === "done" || v.kind === "debt" || v.kind === "personal" || !v.due) return;
+        var d = dayDiff(v.due);
+        if (v.due < today) { late.push(v); lateSum += usd(v); }
+        else if (d <= 30) { soon.push(v); soonSum += usd(v); }
+      });
+      soon.sort(function (a, b) { return a.due < b.due ? -1 : 1; });
+      return { back: back, soon: soon, soonSum: soonSum, late: late, lateSum: lateSum };
+    }
+    function goalsList() { return (pmeta.goals && Array.isArray(pmeta.goals.items)) ? pmeta.goals.items : []; }
+    function goalsProgress() {
+      var L = goalsList(), t = 0, s = 0;
+      L.forEach(function (g) { t += num(g.target); s += Math.min(num(g.saved), num(g.target)); });
+      return t > 0 ? s / t : 0;
+    }
+    function placeSub(k) {
+      if (k === "vault") { var c = pmeta.vault && pmeta.vault.cash; return c === null || c === undefined || c === "" ? "Cash not set yet" : money(num(c), "USD") + " in hand"; }
+      if (k === "lighthouse") { var n = goalsList().length; return n ? n + (n === 1 ? " goal" : " goals") + " · " + Math.round(goalsProgress() * 100) + "%" : "No goals yet"; }
+      if (k === "workshop") { var dn = pdeals.length; return dn ? dn + (dn === 1 ? " deal found" : " deals found") : "Plan your next move"; }
+      var pn = PARTNERS.filter(function (p) { return partnerItems(p[1]).length; }).length;
+      return pn + (pn === 1 ? " partner" : " partners");
+    }
+    function zoneLabel(zk) {
+      if (zk === "guild") return "The Agent Guild";
+      if (PLACES[zk]) return PLACES[zk].name + " · " + placeSub(zk);
+      return ZONES[zk].name + " · " + zoneTotal(zk);
+    }
+    function refreshPlaceSigns() {
+      PLACE_KEYS.forEach(function (k) {
+        var sg = placeSigns[k], p = PLACES[k];
+        sg.spr.position.set(p.cx, 12.5, p.cz - 4);
+        drawSign(sg, p.name, placeSub(k));
+      });
+    }
+    function placeCards() {
+      return PLACE_KEYS.map(function (k) {
+        return '<button type="button" class="zcard" data-zone="' + k + '"><span class="zc-name">' + esc(PLACES[k].name) + '</span><span class="zc-amt">' + esc(placeSub(k)) + '</span><span class="zc-b">' + esc(PLACES[k].blurb) + "</span></button>";
+      }).join("");
+    }
+    function head(k) {
+      return '<div class="zhead"><button type="button" class="btn" data-zone="overview">&larr; Overview</button><div><h2>' + esc(PLACES[k].name) + '</h2><div class="zc-b">' + esc(PLACES[k].blurb) + "</div></div></div>";
+    }
+    function stat(label, value, sub) { return '<div class="zcard static"><span class="zc-name">' + esc(label) + '</span><span class="zc-amt">' + esc(value) + '</span><span class="zc-b">' + esc(sub || "") + "</span></div>"; }
+    var pendingDel = null;
+    function placePanelHtml(k) {
+      var h = head(k), V, i;
+      if (k === "vault") {
+        V = vaultData();
+        var cash = pmeta.vault && pmeta.vault.cash !== null && pmeta.vault.cash !== undefined ? pmeta.vault.cash : "";
+        var upd = pmeta.vault && pmeta.vault.updatedAt ? "Updated " + esc(String(pmeta.vault.updatedAt).slice(0, 10)) : "Type what you are holding and save.";
+        return h + '<div class="zsum">' +
+          '<div class="zcard static"><span class="zc-name">Cash I am holding</span><span class="vrow"><input id="vault-cash" type="number" inputmode="decimal" min="0" step="0.01" value="' + esc(String(cash)) + '" placeholder="0.00" aria-label="Cash in hand in USD"><button type="button" class="btn primary" data-vault-save="1">Save</button></span><span class="zc-b">' + upd + "</span></div>" +
+          stat("Came back so far", money(V.back, "USD"), "Profit received plus money recovered, from your entries.") +
+          stat("Coming in, next 30 days", money(V.soonSum, "USD"), V.soon.length + (V.soon.length === 1 ? " entry has" : " entries have") + " a due date in the next 30 days.") +
+          stat("Overdue", money(V.lateSum, "USD"), V.late.length ? V.late.length + " past their due date." : "Nothing is past its due date.") + "</div>" +
+          (V.late.length || V.soon.length ? '<div class="zlist">' + V.late.concat(V.soon).map(itemHtml).join("") + "</div>" : '<p class="zc-b">No due dates in the next 30 days. Add a due date to an entry and it shows up here.</p>');
+      }
+      if (k === "lighthouse") {
+        var G = goalsList();
+        return h + '<div class="zsum">' + (G.length ? G.map(function (g) {
+          var tgt = num(g.target), sv = num(g.saved), pc = tgt > 0 ? Math.min(100, Math.round(sv / tgt * 100)) : 0;
+          return '<div class="zcard static"><span class="zc-name">' + esc(g.name) + '</span><span class="zc-amt">' + money(sv, "USD") + " of " + money(tgt, "USD") + '</span><span class="gbar"><i style="width:' + pc + '%"></i></span><span class="zc-b">' + pc + '% there</span>' +
+            '<span class="vrow"><input id="gi-' + esc(g.id) + '" type="number" inputmode="decimal" step="0.01" placeholder="Add amount" aria-label="Amount to add to ' + esc(g.name) + '"><button type="button" class="btn" data-goal-inc="' + esc(g.id) + '">Add</button><button type="button" class="btn" data-goal-del="' + esc(g.id) + '">' + (pendingDel === g.id ? "Sure?" : "Remove") + "</button></span></div>";
+        }).join("") : '<div class="zcard static"><span class="zc-name">No goals yet</span><span class="zc-b">Add one below, for example a target for restocking or paying back what you owe.</span></div>') + "</div>" +
+          '<div class="zcard static" style="margin-top:12px"><span class="zc-name">New goal</span><span class="vrow"><input id="goal-name" placeholder="Goal name" maxlength="60" aria-label="Goal name"><input id="goal-target" type="number" inputmode="decimal" min="1" step="0.01" placeholder="Target $" aria-label="Goal target in USD"><button type="button" class="btn primary" data-goal-add="1">Add goal</button></span></div>';
+      }
+      if (k === "workshop") {
+        V = vaultData();
+        var dl = pdeals;
+        return h + '<div class="zsum">' +
+          '<div class="zcard static"><span class="zc-name">Plan a split</span><span class="zc-b">How much will you put to work? Start with what is due in the next 30 days and change the shares.</span>' +
+          '<span class="vrow"><label>Amount $<input id="wp-amt" type="number" inputmode="decimal" min="0" step="1" value="' + Math.round(V.soonSum) + '"></label></span>' +
+          '<span class="vrow"><label>Pay what I owe %<input id="wp-debt" type="number" min="0" max="100" value="40"></label><label>Cash buffer %<input id="wp-buf" type="number" min="0" max="100" value="20"></label><label>Restock %<input id="wp-stock" type="number" min="0" max="100" value="40"></label></span>' +
+          '<span class="wp-out" id="wp-out"></span></div>' +
+          '<div class="zcard static"><span class="zc-name">Ask the Strategist</span><span class="zc-b">Get practical ideas for where the next money should go, based on your entries.</span><span class="vrow"><button type="button" class="btn primary" data-ask-strategist="1">Get ideas</button></span></div></div>' +
+          '<h3 class="subh">Deals the scout found</h3>' + (dl.length ? '<div class="zlist">' + dl.slice(0, 20).map(function (d) {
+            var link = d.url && /^https:\/\//.test(String(d.url)) ? '<a class="btn" href="' + esc(String(d.url)) + '" target="_blank" rel="noopener noreferrer">Open listing</a>' : "";
+            return '<div class="zitem"><div class="zi-top"><b>' + esc(d.title || "Deal") + '</b><span class="zi-amt">' + esc(d.price !== undefined ? String(d.price) : "") + '</span></div>' + (d.note ? '<div class="zi-note">' + esc(d.note) + "</div>" : "") +
+              '<div class="zi-meta">' + (d.found ? "Found " + esc(String(d.found).slice(0, 10)) : "") + '</div><div class="zi-act">' + link + "</div></div>";
+          }).join("") + "</div>" : '<p class="zc-b">No deals yet. Tell Claude what to hunt for (what you want to buy, set, condition and your price limit) and the scout posts what it finds here.</p>');
+      }
+      var out = "", any = false;
+      PARTNERS.forEach(function (p) {
+        var L = partnerItems(p[1]);
+        if (!L.length) return;
+        any = true;
+        var sum = 0; L.forEach(function (v) { sum += usd(v); });
+        out += '<h3 class="subh">' + esc(p[0]) + '</h3><p class="zc-b">' + L.length + (L.length === 1 ? " entry" : " entries") + ". Recorded amounts add to " + esc(money(sum, "USD")) + ", which are full entry amounts and not necessarily your share. Your split is written in each note.</p><div class=\"zlist\">" + L.map(itemHtml).join("") + "</div>";
+      });
+      return h + (any ? out + '<p class="zc-b">An entry can show under more than one partner.</p>' : '<p class="zc-b">No entries mention Saad, Leo or Dahduli yet.</p>');
+    }
+    function placeNum(id) { var el = document.getElementById(id); return el ? num(el.value) : 0; }
+    function planOut() {
+      var el = document.getElementById("wp-out");
+      if (!el) return;
+      var a = placeNum("wp-amt"), d = placeNum("wp-debt"), b = placeNum("wp-buf"), s = placeNum("wp-stock"), tot = d + b + s;
+      el.textContent = "Pay what I owe " + money(a * d / 100, "USD") + " · Cash buffer " + money(a * b / 100, "USD") + " · Restock " + money(a * s / 100, "USD") + (Math.round(tot) !== 100 ? "  (shares add to " + Math.round(tot) + "%, not 100%)" : "");
+    }
+    function metaSet(key, data, okMsg) {
+      if (!metaSave) { toast("Saving isn't available right now."); return; }
+      Promise.resolve(metaSave(key, data)).then(function () { if (okMsg) toast(okMsg); }, function () { toast("Couldn't save that. Try again."); });
+    }
+    function placeClick(ev) {
+      var t = ev.target, b;
+      if (t.closest("[data-vault-save]")) {
+        var raw = document.getElementById("vault-cash").value, n = parseFloat(raw);
+        if (!isFinite(n) || n < 0) { toast("Type an amount first."); return; }
+        metaSet("vault", { cash: Math.round(n * 100) / 100, updatedAt: new Date().toISOString() }, "Vault saved: " + money(n, "USD"));
+        return;
+      }
+      if (t.closest("[data-goal-add]")) {
+        var nm = document.getElementById("goal-name").value.trim(), tg = parseFloat(document.getElementById("goal-target").value);
+        if (!nm || !isFinite(tg) || tg <= 0) { toast("Give the goal a name and a target."); return; }
+        var items = goalsList().concat([{ id: "g" + Date.now().toString(36), name: nm, target: Math.round(tg * 100) / 100, saved: 0 }]);
+        metaSet("goals", { items: items }, "Goal added: " + nm);
+        return;
+      }
+      if ((b = t.closest("[data-goal-inc]"))) {
+        var id = b.getAttribute("data-goal-inc"), amt = parseFloat(document.getElementById("gi-" + id).value);
+        if (!isFinite(amt) || amt === 0) { toast("Type an amount to add."); return; }
+        var was = false, hit = null;
+        var list = goalsList().map(function (g) {
+          if (g.id !== id) return g;
+          was = num(g.saved) >= num(g.target);
+          var ng = { id: g.id, name: g.name, target: num(g.target), saved: Math.max(0, Math.round((num(g.saved) + amt) * 100) / 100) };
+          if (!was && ng.saved >= ng.target) hit = ng;
+          return ng;
+        });
+        metaSet("goals", { items: list }, hit ? "" : "Saved");
+        if (hit) { toast("Goal reached: " + hit.name + "!"); burst(PLACES.lighthouse.cx, PLACES.lighthouse.cz + 4, 30); }
+        return;
+      }
+      if ((b = t.closest("[data-goal-del]"))) {
+        var gid = b.getAttribute("data-goal-del");
+        if (pendingDel !== gid) { pendingDel = gid; renderPanel(); return; }
+        pendingDel = null;
+        metaSet("goals", { items: goalsList().filter(function (g) { return g.id !== gid; }) }, "Goal removed");
+        return;
+      }
+      if (t.closest("[data-ask-strategist]")) { openSteward("strategist"); agentAsk(agentOf("strategist").chips[0][1]); }
+    }
+    panel.addEventListener("click", placeClick);
+    panel.addEventListener("input", function (ev) { if (ev.target && /^wp-/.test(ev.target.id || "")) planOut(); });
+    metaHook = function () { try { refreshPlaceSigns(); if (PLACES[focus] || focus === "overview") renderPanel(); } catch (err) { /* ignore */ } };
+    refreshPlaceSigns();
+
+    function animPlaces(t) {
+      if (vaultWheel) vaultWheel.rotation.z = Math.sin(t * 0.35) * 0.9;
+      if (gearA) gearA.rotation.z = t * 0.6;
+      if (gearB) gearB.rotation.z = -t * 0.9;
+      smokePuffs.forEach(function (p) {
+        var k = (t * 0.18 + p.ph) % 1;
+        p.m.position.set(p.x0 + k * 2.4, p.y0 + k * 6, p.z0);
+        p.m.scale.setScalar(0.5 + k * 1.6);
+      });
+      if (lightBeam) {
+        lightBeam.rotation.y = t * 0.8;
+        lightBeam.userData.mat.opacity = 0.08 + Math.min(1, nightAmt * 1.3) * 0.22;
+      }
+    }
+
     /* ===== Agent Guild Hall (north) ===== */
     var guildOrb = null, guildRing = null;
     (function buildGuild() {
@@ -1829,12 +2118,19 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       urgent.innerHTML = html;
     }
     function renderPanel() {
+      if (!PLACES[focus]) panel.removeAttribute("data-pf");
       if (focus === "overview") {
         panel.innerHTML = '<div class="zsum">' + ZORDER.map(function (k) {
           var n = zoneItems(k).filter(function (v) { return k === "count" ? v.status !== "done" : true; }).length;
           return '<button type="button" class="zcard" data-zone="' + k + '"><span class="zc-name">' + esc(ZONES[k].name) + '</span><span class="zc-amt">' + esc(zoneTotal(k)) +
             '</span><span class="zc-n">' + n + (n === 1 ? " villager" : " villagers") + '</span><span class="zc-b">' + esc(ZONES[k].blurb) + "</span></button>";
-        }).join("") + '<button type="button" class="zcard" data-zone="guild"><span class="zc-name">The Agent Guild</span><span class="zc-amt">4 AI agents</span><span class="zc-n">Steward, Collector, Strategist, Auditor</span><span class="zc-b">Ask them what to chase, where to put money, and what the records are missing.</span></button></div>';
+        }).join("") + '<button type="button" class="zcard" data-zone="guild"><span class="zc-name">The Agent Guild</span><span class="zc-amt">4 AI agents</span><span class="zc-n">Steward, Collector, Strategist, Auditor</span><span class="zc-b">Ask them what to chase, where to put money, and what the records are missing.</span></button>' + placeCards() + '</div>';
+      } else if (PLACES[focus]) {
+        var ae = document.activeElement;
+        if (ae && ae.tagName === "INPUT" && panel.contains(ae) && panel.getAttribute("data-pf") === focus) return;
+        panel.setAttribute("data-pf", focus);
+        panel.innerHTML = placePanelHtml(focus);
+        planOut();
       } else if (focus === "guild") {
         panel.innerHTML = '<div class="zhead"><button type="button" class="btn" data-zone="overview">&larr; Overview</button><div><h2>The Agent Guild</h2><div class="zc-b">AI agents that read your entries and never change them.</div></div></div>' +
           '<div class="zsum">' + AGENTS.map(function (a) { return '<button type="button" class="zcard" data-agent="' + a.id + '"><span class="zc-name">' + esc(a.name) + '</span><span class="zc-b">' + esc(a.role) + '</span><span class="zc-n">Tap to ask</span></button>'; }).join('') + '<button type="button" class="zcard" data-council="1"><span class="zc-name">Morning Council</span><span class="zc-b">All agents report, then the Steward gives your top 3 actions.</span><span class="zc-n">Tap to run</span></button></div>';
@@ -1887,7 +2183,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         Object.keys(ents).filter(function (id) { return ents[id].v.name.toLowerCase().indexOf(q) >= 0; })[0];
       if (hit) { followEnt(hit); search.value = ""; }
     });
-    var NAV = [["overview", "Overview"], ["fields", "The Fields"], ["square", "Waiting Bench"], ["home", "Home"], ["count", "Money You Owe"], ["harbor", "The Harbor"], ["stall", "Market Stall"], ["guild", "Agent Guild"]];
+    var NAV = [["overview", "Overview"], ["fields", "The Fields"], ["square", "Waiting Bench"], ["home", "Home"], ["count", "Money You Owe"], ["harbor", "The Harbor"], ["stall", "Market Stall"], ["guild", "Agent Guild"], ["vault", "The Vault"], ["workshop", "Workshop"], ["lighthouse", "Lighthouse"], ["bank", "Bank of Saad"]];
     NAV.forEach(function (n) {
       var b = document.createElement("button");
       b.type = "button"; b.className = "btn"; b.textContent = n[1]; b.setAttribute("data-nav", n[0]);
@@ -1901,14 +2197,18 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     nav.appendChild(search); nav.appendChild(datalist);
 
     var VIEWS = {
-      overview: { tx: 0, tz: 8, dist: 140, theta: 0.45, phi: 0.95 },
+      overview: { tx: 0, tz: 8, dist: 150, theta: 0.45, phi: 0.95 },
       guild: { tx: 0, tz: -48, dist: 40, theta: 0, phi: 0.9 },
       fields: { tx: -19, tz: -9, dist: 38, theta: 0.3, phi: 0.95 },
       square: { tx: 19, tz: -9, dist: 38, theta: -0.3, phi: 0.95 },
       home: { tx: -19, tz: 18, dist: 38, theta: 0.3, phi: 0.95 },
       count: { tx: 19, tz: 18, dist: 38, theta: -0.3, phi: 0.95 },
       harbor: { tx: -19, tz: 47, dist: 38, theta: 0.3, phi: 0.95 },
-      stall: { tx: 19, tz: 47, dist: 38, theta: -0.3, phi: 0.95 }
+      stall: { tx: 19, tz: 47, dist: 38, theta: -0.3, phi: 0.95 },
+      vault: { tx: -50, tz: -12, dist: 34, theta: 0.3, phi: 0.95 },
+      workshop: { tx: 50, tz: -12, dist: 34, theta: -0.3, phi: 0.95 },
+      lighthouse: { tx: -50, tz: 40, dist: 40, theta: 0.3, phi: 0.9 },
+      bank: { tx: 50, tz: 16, dist: 34, theta: -0.3, phi: 0.95 }
     };
     function copyView(v) { return { tx: v.tx, tz: v.tz, dist: v.dist, theta: v.theta, phi: v.phi }; }
     var cur = copyView(VIEWS.overview), goal = copyView(VIEWS.overview);
@@ -1995,6 +2295,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         } else { e.seated = false; }
       });
       ZORDER.forEach(function (k) { drawSign(signs[k], ZONES[k].name, zoneTotal(k)); });
+      refreshPlaceSigns();
       datalist.innerHTML = "";
       Object.keys(ents).forEach(function (id) {
         var o = document.createElement("option"); o.value = ents[id].v.name; datalist.appendChild(o);
@@ -2210,6 +2511,10 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         var q = ZONES[ZORDER[i]];
         if (Math.abs(x - q.cx) <= q.w / 2 && Math.abs(z - q.cz) <= q.d / 2) return ZORDER[i];
       }
+      for (var pi = 0; pi < PLACE_KEYS.length; pi++) {
+        var pq = PLACES[PLACE_KEYS[pi]];
+        if (Math.abs(x - pq.cx) <= pq.w / 2 && Math.abs(z - pq.cz) <= pq.d / 2) return PLACE_KEYS[pi];
+      }
       if (Math.abs(x) < 22 && z < -42 && z > -66) return "guild";
       return "";
     }
@@ -2301,7 +2606,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       meRing.position.set(walk.x, g.position.y + 0.06, walk.z);
       hud.setAttribute("data-pos", walk.x.toFixed(1) + "," + walk.z.toFixed(1));
       var zk = zoneAt(walk.x, walk.z);
-      var zt = zk === "guild" ? "The Agent Guild" : zk ? ZONES[zk].name + " · " + zoneTotal(zk) : (walk.z > -41.6 && walk.z < -34.4 ? "The bridge" : "On the street");
+      var zt = zk ? zoneLabel(zk) : (walk.z > -41.6 && walk.z < -34.4 ? "The bridge" : "On the street");
       if (zt !== walk.zoneText) { walk.zoneText = zt; wZone.textContent = zt; }
       if (zk && zk !== walk.zoneKey) { walk.zoneKey = zk; focus = VIEWS[zk] ? zk : focus; markNav(); renderPanel(); }
       var n = nearest();
@@ -2377,6 +2682,12 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         c.fillStyle = css(q.plate); c.fillRect(X(q.cx - q.w / 2), Z(q.cz - q.d / 2), q.w, q.d);
         c.fillStyle = "rgba(0,0,0,0.55)"; c.font = "9px sans-serif"; c.textAlign = "center";
         c.fillText(short[k], X(q.cx), Z(q.cz) + 3);
+      });
+      var pshort = { vault: "Vault", workshop: "Shop", lighthouse: "Light", bank: "Bank" };
+      PLACE_KEYS.forEach(function (k) {
+        var q = PLACES[k];
+        c.fillStyle = css(q.plate); c.fillRect(X(q.cx - q.w / 2), Z(q.cz - q.d / 2), q.w, q.d);
+        c.fillStyle = "rgba(0,0,0,0.55)"; c.fillText(pshort[k], X(q.cx), Z(q.cz) + 3);
       });
       c.fillStyle = "rgba(0,0,0,0.55)"; c.fillText("Guild", X(0), Z(-53));
       c.fillStyle = "#5fb4e0"; c.beginPath(); c.arc(X(0), Z(0), 4, 0, 6.3); c.fill();
@@ -2662,6 +2973,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
       }
+      animPlaces(tt);
       if (walk.on) { walkStep(dt); goal.tx = walk.x; goal.tz = walk.z; }
       else if (following && ents[following]) {
         var fp = ents[following].rig.g.position;
@@ -2762,6 +3074,17 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       save: function (o) { return col.doc(o.id).set(o); },
       remove: function (id) { return col.doc(id).delete(); }
     };
+    metaSaver = function (k, d) { return db.collection("meta").doc(k).set(d); };
+    try {
+      db.collection("meta").onSnapshot(function (snap) {
+        snap.docs.forEach(function (d) { var o = d.data() || {}; if (d.id === "vault") pmeta.vault = o; else if (d.id === "goals") pmeta.goals = o; });
+        metaChanged();
+      }, function () { /* ignore */ });
+      db.collection("deals").onSnapshot(function (snap) {
+        pdeals = snap.docs.map(function (d) { var o = d.data() || {}; o.id = d.id; return o; }).sort(function (a, b) { return String(b.found || "") < String(a.found || "") ? -1 : 1; });
+        metaChanged();
+      }, function () { /* ignore */ });
+    } catch (err) { /* ignore */ }
     var timer = setTimeout(function () { if (!state.loaded) { state.slow = true; render(); } }, 10000);
     col.onSnapshot(function (snap) {
       state.items = snap.docs.map(function (d) { var o = d.data() || {}; o.id = d.id; return o; });
