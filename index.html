@@ -1068,9 +1068,10 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     try { renderer = new THREE.WebGLRenderer({ antialias: true }); } catch (err) { return; }
     var still = false;
     try { still = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (err) { still = false; }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false;
     renderer.setClearColor(0xcfe6f2, 1);
     host.insertBefore(renderer.domElement, host.firstChild);
     renderer.domElement.setAttribute("role", "img");
@@ -1089,7 +1090,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
     sun.target.position.set(0, 0, 8);
     scene.add(sun.target);
     sun.castShadow = true;
-    var smap = window.innerWidth < 700 ? 2048 : 4096;
+    var smap = window.innerWidth < 700 ? 1024 : 2048;
     sun.shadow.mapSize.set(smap, smap);
     sun.shadow.camera.left = -72; sun.shadow.camera.right = 72;
     sun.shadow.camera.top = 96; sun.shadow.camera.bottom = -96;
@@ -2384,6 +2385,11 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       camera.lookAt(cur.tx, 0.9, cur.tz);
     }
 
+    var groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    var placeProxies = PLACE_KEYS.map(function (k) {
+      var q = PLACES[k], m = new THREE.Mesh(new THREE.BoxGeometry(q.w, 14, q.d), new THREE.MeshBasicMaterial({ visible: false }));
+      m.position.set(q.cx, 7, q.cz); m.userData.zone = k; world.add(m); return m;
+    });
     var ray = new THREE.Raycaster();
     var ndc = new THREE.Vector2();
     function pickAt(cx, cy) {
@@ -2394,7 +2400,13 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       groups.push(steward.g);
       guildAgents.forEach(function (a) { groups.push(a.r.g); });
       var hits = ray.intersectObjects(groups, true);
-      if (!hits.length) return;
+      if (!hits.length) {
+        var ph = ray.intersectObjects(placeProxies, false);
+        var zk = ph.length ? ph[0].object.userData.zone : "";
+        if (!zk) { var gp = new THREE.Vector3(); if (ray.ray.intersectPlane(groundPlane, gp)) zk = zoneAt(gp.x, gp.z); }
+        if (zk && VIEWS[zk]) { setFocus(zk); try { panel.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (err) { /* ignore */ } }
+        return;
+      }
       var o = hits[0].object;
       while (o && !(o.userData && o.userData.id)) o = o.parent;
       if (o && o.userData.id === "__steward") { openSteward("steward"); return; }
@@ -2911,12 +2923,14 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
       } catch (err) { /* plain colors are fine */ }
     })();
 
-    var qAcc = 0, qN = 0, qPr = Math.min(window.devicePixelRatio || 1, 2), qMax = qPr;
+    var shadowOff = false, shFrame = 0;
+    var qAcc = 0, qN = 0, qPr = Math.min(window.devicePixelRatio || 1, 1.5), qMax = qPr;
     function quality(dt) {
       qAcc += dt; qN++;
       if (qN < 100) return;
       var avg = qAcc / qN; qAcc = 0; qN = 0;
-      if (avg > 0.036 && qPr > 1) { qPr = Math.max(1, qPr - 0.5); qMax = qPr; renderer.setPixelRatio(qPr); lw = 0; }
+      if (avg > 0.03 && qPr > 0.75) { qPr = Math.max(0.75, qPr - 0.25); qMax = qPr; renderer.setPixelRatio(qPr); lw = 0; }
+      else if (avg > 0.034 && sun.castShadow && qPr <= 0.75) { sun.castShadow = false; shadowOff = true; }
     }
     function liveStep(dt, t) {
       liveUi(dt);
@@ -3026,6 +3040,7 @@ legend { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; fon
         drift.forEach(function (d) { d.x += dt * d.v; if (d.x > d.max) d.x = d.min; d.g.position.x = d.x; d.g.position.y = 0.5 + Math.sin(tt * 1.2 + d.ph) * 0.09; d.g.rotation.z = Math.sin(tt + d.ph) * 0.04; });
         clouds.forEach(function (c) { c.position.x += dt * 0.7; if (c.position.x > 110) c.position.x = -110; });
       }
+      if (!shadowOff && (++shFrame % 3 === 0 || walk.on && shFrame % 2 === 0)) renderer.shadowMap.needsUpdate = true;
       renderer.render(scene, camera);
       Object.keys(ents).forEach(function (id) {
         var e = ents[id], p = e.rig.g.position;
